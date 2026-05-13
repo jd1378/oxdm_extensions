@@ -26,12 +26,38 @@ let pinButton: HTMLElement | null = null;
 let pinTarget: HTMLAnchorElement | null = null;
 let pinHideTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Tracked globally so registerDetected() can probe the element under
+// the cursor immediately, and the selection button can spawn next to
+// the most recent cursor position.
+const lastMousePos = { x: NaN as number, y: NaN as number };
+document.addEventListener(
+  'mousemove',
+  (e) => {
+    lastMousePos.x = e.clientX;
+    lastMousePos.y = e.clientY;
+  },
+  { passive: true, capture: true },
+);
+
 function ensureHost(): ShadowRoot {
   if (shadow) return shadow;
   hostEl = document.createElement('div');
   hostEl.id = HOST_ID;
-  hostEl.style.cssText =
-    'position:fixed;top:0;left:0;width:0;height:0;pointer-events:none;z-index:2147483647;';
+  // Absolute (not fixed) so child page coordinates can use the
+  // document's coordinate system directly. The translate3d hack
+  // promotes the host to its own compositor layer so heavy host
+  // pages can't reflow over the pin. z-index 9_999_999 keeps it
+  // above the vast majority of stacking contexts in the wild.
+  hostEl.style.cssText = [
+    'position:absolute',
+    'top:0',
+    'left:0',
+    'width:0',
+    'height:0',
+    'pointer-events:none',
+    'transform:translate3d(0,0,0)',
+    'z-index:2147483647',
+  ].join(';');
   document.documentElement.appendChild(hostEl);
   shadow = hostEl.attachShadow({ mode: 'open' });
   const style = document.createElement('style');
@@ -79,9 +105,20 @@ const css = `
 
 const detectedAnchors = new Set<HTMLAnchorElement>();
 
-/** Called by the scanner whenever an anchor passes download heuristics. */
+/** Called by the scanner whenever an anchor passes download heuristics.
+ *  If the cursor is currently sitting on that anchor, the pin shows
+ *  immediately — otherwise the hover listener will fire on the next
+ *  cursor move. */
 export function registerDetected(anchor: HTMLAnchorElement) {
   detectedAnchors.add(anchor);
+  if (cursorIsOver(anchor)) showPin(anchor);
+}
+
+function cursorIsOver(anchor: HTMLAnchorElement): boolean {
+  if (!Number.isFinite(lastMousePos.x)) return false;
+  const el = document.elementFromPoint(lastMousePos.x, lastMousePos.y);
+  if (!el) return false;
+  return anchor === el || anchor.contains(el);
 }
 
 export function clearDetected() {
@@ -185,6 +222,7 @@ function repositionPin() {
     return;
   }
   pinButton.style.display = '';
+  // Page coordinates so scroll keeps the pin glued to the anchor.
   pinButton.style.top = `${r.top + window.scrollY - 4}px`;
   pinButton.style.left = `${r.right + window.scrollX + 8}px`;
 }
@@ -209,15 +247,6 @@ function hidePinNow() {
 }
 
 // ─── Selection floating button (cursor-anchored) ──────────────────
-
-let lastMousePos = { x: 0, y: 0 };
-document.addEventListener(
-  'mousemove',
-  (e) => {
-    lastMousePos = { x: e.clientX, y: e.clientY };
-  },
-  { passive: true, capture: true },
-);
 
 export function showSelectionButton(_sel: Selection, urls: string[]) {
   const root = ensureHost();

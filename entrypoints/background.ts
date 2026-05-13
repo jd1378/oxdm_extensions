@@ -70,9 +70,10 @@ async function init() {
     title: 'Download with oxdm',
     contexts: ['link'],
   }) as any);
+  // One menu item, retitled per selection count.
   browser.contextMenus.create(withIcon({
     id: 'oxdm-send-selection',
-    title: 'Download selected links with oxdm',
+    title: 'Download with oxdm',
     contexts: ['selection'],
     visible: false,
   }) as any);
@@ -134,16 +135,22 @@ async function handleRuntimeMsg(msg: RuntimeMsg): Promise<unknown> {
 }
 
 async function applyMenuState(selection: number, page: number) {
-  // Selection: zero hides both; one shows the singular; >1 shows the
-  // plural. Page: zero hides; any positive shows the "all detected"
-  // entry. Failures (e.g. menu not yet ready) are ignored.
-  const set = (id: string, visible: boolean) => {
+  const update = (id: string, props: Record<string, unknown>) => {
     try {
-      browser.contextMenus.update(id, { visible });
+      browser.contextMenus.update(id, props as any);
     } catch {}
   };
-  set('oxdm-send-selection', selection > 0);
-  set('oxdm-send-page', page > 0);
+  update('oxdm-send-selection', {
+    visible: selection > 0,
+    title:
+      selection > 1
+        ? `Download ${selection} selected links with oxdm`
+        : 'Download with oxdm',
+  });
+  update('oxdm-send-page', {
+    visible: page > 0,
+    title: page > 1 ? `Download ${page} detected links with oxdm` : 'Download with oxdm',
+  });
 }
 
 async function onContextMenu(info: any, tab?: any) {
