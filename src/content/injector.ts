@@ -11,7 +11,11 @@
 // Host page CSS can't reach either widget (Shadow-DOM mode 'open'
 // but page selectors can't enter).
 
-import iconSrc from '/icon-32.png';
+// Resolve at runtime via the extension's own origin. A bare
+// `import iconSrc from '/icon-32.png'` becomes the string `/icon-32.png`
+// in the bundle, which the host page then tries to load from *its*
+// origin — yielding 404s on every site that isn't ours.
+const iconSrc = browser.runtime.getURL('/icon-32.png');
 import type { CaptureRequest } from '@/src/shared/messages';
 
 const HOST_ID = 'oxdm-overlay-host';
@@ -222,9 +226,46 @@ function repositionPin() {
     return;
   }
   pinButton.style.display = '';
-  // Page coordinates so scroll keeps the pin glued to the anchor.
-  pinButton.style.top = `${r.top + window.scrollY - 4}px`;
-  pinButton.style.left = `${r.right + window.scrollX + 8}px`;
+  // Measure ourselves once so we can pick a side that fits. Reads
+  // the pin's own size after it has been mounted with whatever
+  // content showPin built.
+  const pinRect = pinButton.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth || window.innerWidth;
+  const vh = document.documentElement.clientHeight || window.innerHeight;
+  const margin = 6;
+
+  const fitsBelow = r.bottom + margin + pinRect.height <= vh;
+  const fitsAbove = r.top - margin - pinRect.height >= 0;
+  const fitsRight = r.right + margin + pinRect.width <= vw;
+
+  let pageTop: number;
+  let pageLeft: number;
+  if (fitsBelow) {
+    pageTop = r.bottom + window.scrollY + margin;
+    pageLeft = clampX(r.left + window.scrollX, pinRect.width, vw);
+  } else if (fitsAbove) {
+    pageTop = r.top + window.scrollY - margin - pinRect.height;
+    pageLeft = clampX(r.left + window.scrollX, pinRect.width, vw);
+  } else if (fitsRight) {
+    pageTop = r.top + window.scrollY;
+    pageLeft = r.right + window.scrollX + margin;
+  } else {
+    // Last resort: cling to the left edge of the anchor, going
+    // outside the viewport rather than overlapping the trigger.
+    pageTop = r.top + window.scrollY;
+    pageLeft = Math.max(0, r.left + window.scrollX - margin - pinRect.width);
+  }
+
+  pinButton.style.top = `${pageTop}px`;
+  pinButton.style.left = `${pageLeft}px`;
+}
+
+function clampX(pageLeft: number, pinWidth: number, vw: number): number {
+  // Keep within viewport horizontal bounds even after page scroll.
+  const min = window.scrollX + 4;
+  const max = window.scrollX + vw - pinWidth - 4;
+  if (max < min) return min;
+  return Math.max(min, Math.min(max, pageLeft));
 }
 
 function scheduleHidePin() {
