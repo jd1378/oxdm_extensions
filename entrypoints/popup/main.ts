@@ -5,7 +5,7 @@ import {
   onSettingsChange,
   type Settings,
 } from '@/src/shared/state';
-import iconUrl from '/icon-48.png';
+const iconUrl = browser.runtime.getURL('/icon-48.png');
 
 const app = document.getElementById('app')!;
 
@@ -84,17 +84,31 @@ async function refreshConn() {
   const r = (await browser.runtime.sendMessage({
     kind: 'connection-status',
   })) as { state: string } | undefined;
-  connState = r?.state ?? 'disconnected';
-  render();
+  const next = r?.state ?? 'disconnected';
+  if (next === connState) return;
+  connState = next;
+  updateStatusBadge();
+}
+
+function updateStatusBadge() {
+  const badge = app.querySelector<HTMLElement>('.status');
+  if (!badge) return;
+  const { text, cls } = statusLine();
+  badge.className = `status ${cls}`;
+  badge.lastElementChild!.textContent = text;
 }
 
 (async () => {
   settings = await getSettings();
-  await refreshConn();
-  onSettingsChange(async (s) => {
+  // First paint synchronous; status badge gets corrected in a tick.
+  render();
+  refreshConn();
+  onSettingsChange((s) => {
     settings = s;
-    await refreshConn();
+    render();
+    refreshConn();
   });
+  // Poll only the badge — don't tear down the DOM each tick.
   const iv = setInterval(refreshConn, 1500);
   window.addEventListener('unload', () => clearInterval(iv));
 })();
