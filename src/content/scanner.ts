@@ -2,7 +2,12 @@
 // Dedupes via WeakSet of elements + Set of URLs for synthetic targets.
 
 import { isDownloadishElement, isDownloadishUrl, extractUrls } from '@/src/shared/heuristics';
-import { attachButton, removeAllButtons } from './injector';
+import {
+  attachButton,
+  removeAllButtons,
+  removeSelectionButton,
+  showSelectionButton,
+} from './injector';
 
 type StopFn = () => void;
 
@@ -111,7 +116,7 @@ function onMouseOver(ev: MouseEvent) {
 
 let selectionTimer: number | null = null;
 let lastSelectionKey = '';
-export function onSelectionChange() {
+function onSelectionChange() {
   if (selectionTimer != null) clearTimeout(selectionTimer);
   selectionTimer = self.setTimeout(handleSelection, 250);
 }
@@ -138,4 +143,3 @@ function handleSelection() {
   showSelectionButton(sel, urls);
 }
 
-import { showSelectionButton, removeSelectionButton } from './injector';

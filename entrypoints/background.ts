@@ -130,7 +130,7 @@ async function handleRuntimeMsg(msg: RuntimeMsg): Promise<unknown> {
     case 'capture':
       return client.capture(msg.req);
     case 'batch':
-      return client.batch(msg.items, true);
+      return client.batch(msg.items);
     case 'connection-status':
       return { state: client.getState() };
     case 'menu-state':

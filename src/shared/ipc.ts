@@ -13,12 +13,7 @@
 // Wire format is identical on both paths: tagged JSON requests with an
 // `id` correlation field; replies carry the same `id`.
 
-import type {
-  OutboundRequest,
-  Response,
-  QueueSummary,
-  CaptureRequest,
-} from './messages';
+import type { OutboundRequest, Response, CaptureRequest } from './messages';
 import type { Transport } from './state';
 
 type Pending = (r: Response) => void;
@@ -44,7 +39,6 @@ export class OxdmClient {
   private transportPref: Transport = 'auto';
   private listeners = new Set<(s: ConnState) => void>();
   private autoFellBackToWs = false;
-  private nativePort: any = null; // chrome.runtime.Port (typed loosely; vendor types vary)
 
   configure(opts: {
     port: number;
@@ -82,10 +76,6 @@ export class OxdmClient {
     return this.state;
   }
 
-  getActiveTransport() {
-    return this.activeTransport;
-  }
-
   private setState(s: ConnState) {
     if (s === this.state) return;
     this.state = s;
@@ -121,7 +111,6 @@ export class OxdmClient {
     }
     this.setState('connecting');
     this.activeTransport = 'native';
-    this.nativePort = port;
     port.onMessage.addListener((msg: any) => {
       if (typeof msg !== 'string') {
         try {
@@ -134,7 +123,6 @@ export class OxdmClient {
     });
     port.onDisconnect.addListener(() => {
       const err = (browser.runtime as any).lastError ?? (port as any).error;
-      this.nativePort = null;
       this.impl = null;
       this.activeTransport = null;
       this.setState('disconnected');
@@ -265,33 +253,11 @@ export class OxdmClient {
     return this.send({ kind: 'capture', ...req });
   }
 
-  async listQueues(): Promise<QueueSummary[]> {
-    const r = await this.send({ kind: 'list_queues', id: '' });
-    if (r.result === 'queues') return r.queues;
-    return [];
-  }
-
-  async evaluate(
-    url: string,
-    extras?: { referrer?: string; cookies?: string; user_agent?: string },
-  ): Promise<Extract<Response, { result: 'evaluated' }>> {
-    const r = await this.send({
-      kind: 'evaluate_url',
-      id: '',
-      url,
-      ...(extras ?? {}),
-    });
-    if (r.result === 'evaluated') return r;
-    return {
-      result: 'evaluated',
-      id: '',
-      url,
-      error: (r as any).reason ?? 'unknown',
-    };
-  }
-
-  async batch(items: CaptureRequest[], interactive: boolean): Promise<Response> {
-    return this.send({ kind: 'batch_capture', id: '', interactive, items });
+  async batch(items: CaptureRequest[]): Promise<Response> {
+    // oxdm always opens the triage dialog for batches now; the
+    // `interactive` field is server-ignored. Kept out of the wire to
+    // shrink the shape.
+    return this.send({ kind: 'batch_capture', id: '', items });
   }
 }
 
