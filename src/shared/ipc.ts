@@ -39,6 +39,9 @@ export class OxdmClient {
   private transportPref: Transport = 'auto';
   private listeners = new Set<(s: ConnState) => void>();
   private autoFellBackToWs = false;
+  /** Set false by `stop()` to suppress reconnect loops while disabled. */
+  private wantConnection = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   configure(opts: {
     port: number;
@@ -82,7 +85,26 @@ export class OxdmClient {
     for (const l of this.listeners) l(s);
   }
 
+  /** Stop reconnecting and close any open transport. Idempotent. */
+  stop() {
+    this.wantConnection = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.impl) {
+      try {
+        this.impl.close();
+      } catch {}
+      this.impl = null;
+    }
+    this.activeTransport = null;
+    this.setState('disconnected');
+    this.failAllPending('client stopped');
+  }
+
   ensureOpen() {
+    this.wantConnection = true;
     if (this.impl) return;
     const tryNative =
       this.transportPref === 'native' ||
@@ -206,8 +228,17 @@ export class OxdmClient {
   }
 
   private scheduleReconnect() {
-    setTimeout(() => this.ensureOpen(), this.backoffMs);
-    this.backoffMs = Math.min(this.backoffMs * 2, 30_000);
+    if (!this.wantConnection) return;
+    if (this.reconnectTimer) return;
+    const delay = this.backoffMs;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.wantConnection) this.ensureOpen();
+    }, delay);
+    // Aggressive cap — oxdm being closed is the common case, not an
+    // error to recover from in seconds. 60s keeps the loop alive for
+    // the moment the user starts oxdm without flooding console.
+    this.backoffMs = Math.min(this.backoffMs * 2, 60_000);
   }
 
   private failAllPending(reason: string) {

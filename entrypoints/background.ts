@@ -27,6 +27,7 @@ async function init() {
     applyAction();
     applyClientConfig(s);
     if (s.enabled && !wasEnabled) client.ensureOpen();
+    else if (!s.enabled && wasEnabled) client.stop();
   });
 
   client.onState((cs) => {
