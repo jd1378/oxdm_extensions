@@ -17,6 +17,25 @@ export default defineConfig({
       'nativeMessaging',
     ],
     host_permissions: ['<all_urls>'],
+    // The injected pin/selection pill render an <img> pointing at the
+    // extension's own icon. Without `web_accessible_resources` the
+    // host page can't load chrome-extension:// URLs even though we
+    // know the chrome-extension origin ourselves.
+    web_accessible_resources:
+      browser === 'firefox'
+        ? (['icon-16.png', 'icon-32.png', 'icon-48.png', 'icon-96.png', 'icon-128.png'] as any)
+        : ([
+            {
+              resources: [
+                'icon-16.png',
+                'icon-32.png',
+                'icon-48.png',
+                'icon-96.png',
+                'icon-128.png',
+              ],
+              matches: ['<all_urls>'],
+            },
+          ] as any),
     // Single unified icon — readable on both light and dark toolbars,
     // so no theme variant or runtime swap is needed. Chrome's
     // `theme_icons` only fires for theme-extension installs, not the
