@@ -81,10 +81,16 @@ async function onAction(action: string) {
 }
 
 async function refreshConn() {
-  const r = (await browser.runtime.sendMessage({
-    kind: 'connection-status',
-  })) as { state: string } | undefined;
-  const next = r?.state ?? 'disconnected';
+  let next = 'disconnected';
+  try {
+    const r = (await browser.runtime.sendMessage({
+      kind: 'connection-status',
+    })) as { state: string } | undefined;
+    next = r?.state ?? 'disconnected';
+  } catch {
+    // Service worker is asleep (MV3) or unavailable. Treat as
+    // disconnected; the next poll wakes it.
+  }
   if (next === connState) return;
   connState = next;
   updateStatusBadge();
