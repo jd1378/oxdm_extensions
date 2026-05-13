@@ -82,15 +82,8 @@ async function handleRuntimeMsg(msg: RuntimeMsg): Promise<unknown> {
       return { ok: true };
     case 'capture':
       return client.capture(msg.req);
-    case 'batch-prepare':
-      await openBatchTab(msg.items);
-      return { ok: true };
-    case 'batch-send':
-      return client.batch(msg.items);
-    case 'evaluate':
-      return client.evaluate(msg.url, { referrer: msg.referrer });
-    case 'list-queues':
-      return client.listQueues();
+    case 'batch':
+      return client.batch(msg.items, true);
     case 'connection-status':
       return { state: client.getState() };
   }
@@ -167,17 +160,6 @@ async function onDownloadCreated(item: any) {
   };
   const r = await client.capture(req);
   if (r.result === 'rejected') notify('oxdm rejected download', r.reason);
-}
-
-async function openBatchTab(items: CaptureRequest[]) {
-  const data = encodeURIComponent(JSON.stringify(items));
-  const url = browser.runtime.getURL('/batch.html') + `?data=${data}`;
-  await browser.windows.create({
-    url,
-    type: 'popup',
-    width: 720,
-    height: 520,
-  });
 }
 
 function notify(title: string, message: string) {

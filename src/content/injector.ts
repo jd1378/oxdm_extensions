@@ -163,5 +163,5 @@ function sendBatch(urls: string[]) {
     referrer: location.href,
     interactive: false,
   }));
-  browser.runtime.sendMessage({ kind: 'batch-prepare', items });
+  browser.runtime.sendMessage({ kind: 'batch', items });
 }

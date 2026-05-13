@@ -152,8 +152,11 @@ export class OxdmClient {
     return { result: 'evaluated', id: '', url, error: (r as any).reason ?? 'unknown' };
   }
 
-  async batch(items: import('./messages').CaptureRequest[]): Promise<Response> {
-    return this.send({ kind: 'batch_capture', id: '', items });
+  async batch(
+    items: import('./messages').CaptureRequest[],
+    interactive: boolean,
+  ): Promise<Response> {
+    return this.send({ kind: 'batch_capture', id: '', interactive, items });
   }
 }
 

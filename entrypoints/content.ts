@@ -32,7 +32,7 @@ export default defineContentScript({
           });
         } else if (urls.length > 1) {
           browser.runtime.sendMessage({
-            kind: 'batch-prepare',
+            kind: 'batch',
             items: urls.map((u) => ({
               url: u,
               referrer: location.href,
