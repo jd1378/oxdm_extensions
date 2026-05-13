@@ -2,7 +2,7 @@
 // floating selection button. Everything in a single host with shadow DOM
 // so host-page CSS can't reach it.
 
-import iconSrc from '/icon-32-on.png';
+import iconSrc from '/icon-32.png';
 import type { CaptureRequest } from '@/src/shared/messages';
 
 const HOST_ID = 'oxdm-overlay-host';

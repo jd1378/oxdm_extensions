@@ -55,7 +55,11 @@ async function init() {
   // `icons` on context menu items is Firefox-only. Chromium throws
   // "Unexpected property: 'icons'" when we include it, so we attach
   // the field only on the Firefox build.
-  const iconUrl = browser.runtime.getURL('/icon-16-on.png');
+  // Cast: WXT generates a strict overload typed to entrypoint paths
+  // only; static asset URLs need to bypass it.
+  const iconUrl = (browser.runtime.getURL as (p: string) => string)(
+    '/icon-16.png',
+  );
   const withIcon = (props: Record<string, unknown>) =>
     import.meta.env.BROWSER === 'firefox'
       ? { ...props, icons: { '16': iconUrl } }
@@ -105,15 +109,16 @@ function applyClientConfig(s: Settings) {
 }
 
 function applyAction() {
-  const suffix = settings.enabled ? 'on' : 'off';
-  browser.action.setIcon({
-    path: {
-      '16': `icon-16-${suffix}.png`,
-      '32': `icon-32-${suffix}.png`,
-      '48': `icon-48-${suffix}.png`,
-      '128': `icon-128-${suffix}.png`,
-    },
-  });
+  // We don't swap the icon image for on/off — that would override the
+  // manifest's `theme_icons` declaration and pin one theme variant.
+  // Instead the enabled / disabled state shows as a badge over the
+  // (theme-aware) base icon.
+  if (settings.enabled) {
+    browser.action.setBadgeText({ text: '' });
+  } else {
+    browser.action.setBadgeText({ text: 'off' });
+    browser.action.setBadgeBackgroundColor?.({ color: '#6b7280' });
+  }
 }
 
 async function handleRuntimeMsg(msg: RuntimeMsg): Promise<unknown> {
@@ -238,7 +243,7 @@ function notify(title: string, message: string) {
   try {
     browser.notifications?.create?.({
       type: 'basic',
-      iconUrl: 'icon-48-on.png',
+      iconUrl: 'icon-48.png',
       title,
       message,
     });

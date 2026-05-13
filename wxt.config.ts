@@ -17,20 +17,24 @@ export default defineConfig({
       'nativeMessaging',
     ],
     host_permissions: ['<all_urls>'],
+    // Single unified icon — readable on both light and dark toolbars,
+    // so no theme variant or runtime swap is needed. Chrome's
+    // `theme_icons` only fires for theme-extension installs, not the
+    // default dark UI, which made two-variant artwork misleading.
     action: {
       default_title: 'oxdm — click to toggle',
       default_icon: {
-        '16': 'icon-16-on.png',
-        '32': 'icon-32-on.png',
-        '48': 'icon-48-on.png',
-        '128': 'icon-128-on.png',
+        '16': 'icon-16.png',
+        '32': 'icon-32.png',
+        '48': 'icon-48.png',
+        '128': 'icon-128.png',
       },
     },
     icons: {
-      '16': 'icon-16-on.png',
-      '32': 'icon-32-on.png',
-      '48': 'icon-48-on.png',
-      '128': 'icon-128-on.png',
+      '16': 'icon-16.png',
+      '32': 'icon-32.png',
+      '48': 'icon-48.png',
+      '128': 'icon-128.png',
     },
     ...(browser === 'firefox'
       ? {
