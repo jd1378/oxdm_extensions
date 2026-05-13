@@ -183,7 +183,7 @@ function showPin(anchor: HTMLAnchorElement) {
   btn.className = 'pin';
   btn.innerHTML = `
     <span class="x" title="hide">✕</span>
-    <span class="body"><img alt="" /><span>Download</span></span>
+    <span class="body"><span>Download</span><img alt="" /></span>
   `;
   (btn.querySelector('img') as HTMLImageElement).src = iconSrc;
   btn.title = `Send to oxdm — ${anchor.href}`;
@@ -292,18 +292,17 @@ function hidePinNow() {
   window.removeEventListener('resize', repositionPin);
 }
 
-// ─── Selection floating button (cursor-anchored) ──────────────────
+// ─── Selection floating button (anchored to selection rect) ───────
 
-export function showSelectionButton(_sel: Selection, urls: string[]) {
+export function showSelectionButton(sel: Selection, urls: string[]) {
   const root = ensureHost();
   if (selectionGraceTimer) {
     clearTimeout(selectionGraceTimer);
     selectionGraceTimer = null;
   }
   if (selectionButton) {
-    // Already showing — just update label + reposition near current cursor.
     updateSelectionLabel(urls);
-    placeAtCursor(selectionButton);
+    placeAtSelection(selectionButton, sel);
     bindSelectionClick(urls);
     return;
   }
@@ -311,7 +310,7 @@ export function showSelectionButton(_sel: Selection, urls: string[]) {
   btn.className = 'btn';
   btn.innerHTML = `
     <span class="x" title="dismiss">✕</span>
-    <span class="body"><img alt="" /><span class="lbl"></span></span>
+    <span class="body"><span class="lbl"></span><img alt="" /></span>
   `;
   (btn.querySelector('img') as HTMLImageElement).src = iconSrc;
   updateSelectionLabel(urls, btn);
@@ -325,7 +324,7 @@ export function showSelectionButton(_sel: Selection, urls: string[]) {
 
   root.appendChild(btn);
   selectionButton = btn;
-  placeAtCursor(btn);
+  placeAtSelection(btn, sel);
   bindSelectionClick(urls);
 }
 
@@ -353,11 +352,31 @@ function updateSelectionLabel(urls: string[], target?: HTMLElement) {
     urls.length > 1 ? `Download Selected (${urls.length})` : 'Download Selected';
 }
 
-function placeAtCursor(btn: HTMLElement) {
-  const x = lastMousePos.x + window.scrollX + 12;
-  const y = lastMousePos.y + window.scrollY + 14;
-  btn.style.left = `${x}px`;
-  btn.style.top = `${y}px`;
+function placeAtSelection(btn: HTMLElement, sel: Selection) {
+  if (sel.rangeCount === 0) return;
+  const r = sel.getRangeAt(0).getBoundingClientRect();
+  if (r.width === 0 && r.height === 0) return;
+  // Anchor below the selection, left-aligned to its leading edge.
+  // Falls back to above the selection if there is no room below.
+  const vw = document.documentElement.clientWidth || window.innerWidth;
+  const vh = document.documentElement.clientHeight || window.innerHeight;
+  const margin = 8;
+  const pinH = btn.getBoundingClientRect().height || 44;
+  const pinW = btn.getBoundingClientRect().width || 220;
+  let top: number;
+  if (r.bottom + margin + pinH <= vh) {
+    top = r.bottom + window.scrollY + margin;
+  } else if (r.top - margin - pinH >= 0) {
+    top = r.top + window.scrollY - margin - pinH;
+  } else {
+    top = window.scrollY + Math.max(0, vh - pinH - margin);
+  }
+  let left = r.left + window.scrollX;
+  const min = window.scrollX + 4;
+  const max = window.scrollX + vw - pinW - 4;
+  if (max >= min) left = Math.max(min, Math.min(max, left));
+  btn.style.left = `${left}px`;
+  btn.style.top = `${top}px`;
 }
 
 /** Called when the user collapses the selection. Schedules a grace

@@ -115,7 +115,7 @@ let lastSelectionKey = '';
 // the floating button. The handler still runs immediately on
 // "selection collapsed" (no debounce there) to keep the dismiss
 // timer responsive.
-const SELECTION_SHOW_DELAY_MS = 2000;
+const SELECTION_SHOW_DELAY_MS = 750;
 function onSelectionChange() {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed) {
