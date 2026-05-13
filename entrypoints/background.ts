@@ -184,7 +184,7 @@ async function buildCapture(
     referrer: tab?.url,
     cookies,
     user_agent: navigator.userAgent,
-    interactive: false,
+    interactive: true,
     ...(extras ?? {}),
   };
 }
@@ -228,7 +228,7 @@ async function onDownloadCreated(item: any) {
     user_agent: navigator.userAgent,
     mime_type: item.mime || undefined,
     size: item.fileSize > 0 ? item.fileSize : undefined,
-    interactive: false,
+    interactive: true,
   };
   const r = await client.capture(req);
   if (r.result === 'rejected') notify('oxdm rejected download', r.reason);
