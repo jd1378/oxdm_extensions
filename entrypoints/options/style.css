@@ -138,6 +138,8 @@ body {
 }
 
 .main { padding: var(--space-7) var(--space-7); max-width: 880px; }
+.panel { display: none; }
+.panel.active { display: block; }
 .title {
   font: 700 28px/1.1 'Fraunces', Georgia, serif;
   margin: 0 0 var(--space-2);
