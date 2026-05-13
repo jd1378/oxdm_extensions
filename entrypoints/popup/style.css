@@ -1,113 +1,153 @@
+/* Mirrors oxdm/design/tokens.css (utility + dark). */
+
 :root {
   color-scheme: light dark;
-  --bg: #1a1d23;
-  --bg-elev: #232730;
-  --fg: #e7eaf1;
-  --fg-dim: #9ba3b4;
-  --fg-mute: #6b7280;
-  --accent: #2563eb;
-  --danger: #ef4444;
-  --ok: #22c55e;
-  --warn: #f59e0b;
-  --row-hover: rgba(255, 255, 255, 0.04);
-  --divider: rgba(255, 255, 255, 0.06);
+
+  --clay-300: #DA8E63;
+  --clay-400: #C9703F;
+  --clay-500: #B25A2A;
+  --clay-600: #8E461F;
+  --gray-50:  #F5F5F4;
+  --gray-100: #E7E6E3;
+  --gray-200: #D2D0CC;
+  --gray-300: #ADAAA4;
+  --gray-400: #7A7672;
+  --gray-500: #525049;
+  --gray-700: #25241F;
+  --gray-800: #181714;
+  --moss-300: #9CAB6A;
+  --moss-500: #5E6E36;
+  --rust-200: #D78062;
+  --rust-300: #B85436;
+
+  --fg-1: var(--gray-800);
+  --fg-2: var(--gray-500);
+  --fg-3: var(--gray-400);
+  --bg-page: var(--gray-50);
+  --bg-surface: #FFFFFF;
+  --bg-sunken: var(--gray-100);
+  --border-subtle: var(--gray-200);
+  --border-default: var(--gray-300);
+  --accent: var(--clay-400);
+  --accent-press: var(--clay-500);
+  --accent-fg: #FFFFFF;
+  --accent-shadow: var(--clay-600);
+  --status-success: var(--moss-500);
+  --status-warning: #B98A21;
+  --status-danger: var(--rust-300);
 }
-@media (prefers-color-scheme: light) {
+
+@media (prefers-color-scheme: dark) {
   :root {
-    --bg: #ffffff;
-    --bg-elev: #f6f7fa;
-    --fg: #1f2937;
-    --fg-dim: #4b5563;
-    --fg-mute: #6b7280;
-    --row-hover: rgba(0, 0, 0, 0.04);
-    --divider: rgba(0, 0, 0, 0.08);
+    --fg-1: #F0EEE8;
+    --fg-2: #B8B5AC;
+    --fg-3: #8A8780;
+    --bg-page: #1F1E1B;
+    --bg-surface: #282723;
+    --bg-sunken: #181715;
+    --border-subtle: #2F2E2A;
+    --border-default: #3A3935;
+    --accent: var(--clay-300);
+    --accent-press: #E9B595;
+    --accent-fg: #181715;
+    --accent-shadow: var(--clay-500);
+    --status-success: var(--moss-300);
+    --status-warning: #DDAA38;
+    --status-danger: var(--rust-200);
   }
 }
 
+* { box-sizing: border-box; }
 html, body {
   margin: 0;
   padding: 0;
-  width: 260px;
-  font: 13px/1.45 system-ui, -apple-system, Segoe UI, sans-serif;
-  background: var(--bg);
-  color: var(--fg);
+  width: 280px;
+  background: var(--bg-page);
+  color: var(--fg-1);
+  font: 13px/1.45 'Plus Jakarta Sans', system-ui, -apple-system, Segoe UI, sans-serif;
 }
 
 #app { display: flex; flex-direction: column; }
 
 .header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 14px 12px;
-  border-bottom: 1px solid var(--divider);
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px;
+  background: var(--bg-surface);
+  border-bottom: 2px solid var(--border-subtle);
 }
-.header .logo {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  background: var(--bg-elev);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.logo {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
 }
-.header .logo img { width: 28px; height: 28px; display: block; }
-.header .title { font-weight: 700; font-size: 13px; letter-spacing: -0.01em; }
-.header .status { font-size: 12px; margin-top: 1px; }
-.header .status.bad  { color: var(--danger); font-weight: 600; }
-.header .status.warn { color: var(--warn); font-weight: 600; }
-.header .status.ok   { color: var(--ok); font-weight: 600; }
+.logo img { width: 32px; height: 32px; display: block; }
+.brand {
+  font: 700 15px/1.2 'Fraunces', Georgia, serif;
+  color: var(--fg-1);
+}
+.status {
+  font-size: 11px;
+  color: var(--fg-3);
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 2px;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+.status .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--fg-3);
+}
+.status.ok   { color: var(--status-success); }
+.status.ok .dot   { background: var(--status-success); }
+.status.warn { color: var(--status-warning); }
+.status.warn .dot { background: var(--status-warning); }
+.status.err  { color: var(--status-danger); }
+.status.err .dot  { background: var(--status-danger); }
 
 .row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 14px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
   cursor: pointer;
   user-select: none;
-  transition: background-color 80ms ease;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--fg-1);
+  font-weight: 600;
+  font-size: 13px;
 }
-.row:hover { background: var(--row-hover); }
-.row + .row { border-top: 1px solid var(--divider); }
-.row .label { flex: 1; font-size: 13px; }
-.row .right { display: flex; align-items: center; color: var(--fg-mute); }
+.row:hover { background: var(--bg-sunken); }
+.row .label { flex: 1; }
+.row .sub { font-size: 11px; color: var(--fg-3); font-weight: 500; }
+.row:last-child { border-bottom: none; }
 
-.divider { height: 1px; background: var(--divider); }
+.icon {
+  width: 18px; height: 18px;
+  color: var(--fg-2);
+  flex-shrink: 0;
+}
 
 .switch {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 32px;
-  height: 18px;
-  border-radius: 18px;
-  background: var(--fg-mute);
+  appearance: none; -webkit-appearance: none;
+  width: 36px; height: 20px;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  border: 2px solid var(--border-default);
   position: relative;
   cursor: pointer;
   outline: none;
-  border: none;
   flex-shrink: 0;
-  transition: background-color 120ms ease;
+  transition: background-color .14s, border-color .14s;
 }
 .switch::after {
   content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
+  position: absolute; top: 1px; left: 1px;
+  width: 14px; height: 14px;
   border-radius: 50%;
-  background: white;
-  transition: left 120ms ease;
+  background: var(--fg-3);
+  transition: left .14s, background .14s;
 }
-.switch.on { background: var(--accent); }
-.switch.on::after { left: 16px; }
-
-.gear {
-  width: 16px; height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
+.switch.on { background: var(--accent); border-color: var(--accent); }
+.switch.on::after { left: 17px; background: var(--accent-fg); }
