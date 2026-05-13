@@ -74,6 +74,7 @@ const css = `
 :host, * { box-sizing: border-box; }
 .btn, .pin {
   position: absolute;
+  direction: ltr; /* keep icon ← text order even on RTL pages */
   display: inline-flex; align-items: stretch;
   background: #1f2937;
   color: #f9fafb;
@@ -359,13 +360,29 @@ function placeAtCursor(btn: HTMLElement) {
   btn.style.top = `${y}px`;
 }
 
-/** Called when the user collapses the selection. Schedules a 3s
- *  dismiss timer; cancelled if a new selection is made. */
+/** Called when the user collapses the selection. Schedules a grace
+ *  timer; cancelled if a new selection is made. Safe to call when
+ *  the button isn't visible yet — a pending show timer will check
+ *  on materialization. */
 export function scheduleSelectionDismiss() {
-  if (!selectionButton) return;
   if (selectionGraceTimer) clearTimeout(selectionGraceTimer);
   selectionGraceTimer = setTimeout(removeSelectionButton, SELECTION_GRACE_MS);
 }
+
+// Belt-and-suspenders: any click outside the pin while a selection
+// button is on screen schedules dismiss. Catches the case where the
+// browser doesn't fire `selectionchange` for the precise interaction
+// the user just did (some sites preventDefault on mouseup).
+document.addEventListener(
+  'mousedown',
+  (ev) => {
+    if (!selectionButton) return;
+    const t = ev.target as Node | null;
+    if (t && selectionButton.contains(t)) return;
+    scheduleSelectionDismiss();
+  },
+  { passive: true, capture: true },
+);
 
 export function removeSelectionButton() {
   if (selectionGraceTimer) {
