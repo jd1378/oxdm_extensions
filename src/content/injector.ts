@@ -20,7 +20,7 @@ import type { CaptureRequest } from '@/src/shared/messages';
 
 const HOST_ID = 'oxdm-overlay-host';
 const HIDE_DELAY_MS = 150; // small grace so the cursor can travel from anchor → pin
-const SELECTION_GRACE_MS = 1000;
+const SELECTION_GRACE_MS = 500;
 
 let hostEl: HTMLDivElement | null = null;
 let shadow: ShadowRoot | null = null;
@@ -182,8 +182,8 @@ function showPin(anchor: HTMLAnchorElement) {
   const btn = document.createElement('div');
   btn.className = 'pin';
   btn.innerHTML = `
+    <span class="body"><img alt="" /><span>Download</span></span>
     <span class="x" title="hide">✕</span>
-    <span class="body"><span>Download</span><img alt="" /></span>
   `;
   (btn.querySelector('img') as HTMLImageElement).src = iconSrc;
   btn.title = `Send to oxdm — ${anchor.href}`;
@@ -309,8 +309,8 @@ export function showSelectionButton(sel: Selection, urls: string[]) {
   const btn = document.createElement('div');
   btn.className = 'btn';
   btn.innerHTML = `
+    <span class="body"><img alt="" /><span class="lbl"></span></span>
     <span class="x" title="dismiss">✕</span>
-    <span class="body"><span class="lbl"></span><img alt="" /></span>
   `;
   (btn.querySelector('img') as HTMLImageElement).src = iconSrc;
   updateSelectionLabel(urls, btn);
