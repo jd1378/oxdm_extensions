@@ -96,7 +96,6 @@ const css = `
   display: inline-flex; align-items: center; justify-content: center;
   width: 38px;
   padding: 0;
-  border-right: 1px solid rgba(255,255,255,.18);
   background: rgba(255,255,255,.06);
   color: rgba(255,255,255,.85);
   cursor: pointer;
