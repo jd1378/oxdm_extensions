@@ -1,5 +1,7 @@
 // Persisted extension settings. storage.sync where available, fallback to local.
 
+import { decodePairingCode } from './pairing';
+
 export type Transport = 'auto' | 'native' | 'ws';
 
 export interface Settings {
@@ -8,6 +10,14 @@ export interface Settings {
   transport: Transport;
   /** Native-messaging host id. Must match the installed manifest's `name`. */
   nativeHostName: string;
+  /**
+   * Single copy-pasteable pairing code from oxdm Settings → Browser
+   * integration. Format: `oxdm1.<base64url>` bundling the IPC port +
+   * extension token. Decoded by `decodePairingCode` into the legacy
+   * `port` + `token` fields below at the moment we configure the
+   * client.
+   */
+  pairingCode: string;
   port: number;
   token: string;
   minSize: number; // bytes; below this, browser handles it
@@ -22,6 +32,7 @@ export const DEFAULTS: Settings = {
   enabled: true,
   transport: 'auto',
   nativeHostName: 'io.github.jd1378.oxdm.host',
+  pairingCode: '',
   port: 27812,
   token: '',
   minSize: 0,
@@ -43,6 +54,15 @@ export async function getSettings(): Promise<Settings> {
 export async function setSettings(patch: Partial<Settings>): Promise<Settings> {
   const cur = await getSettings();
   const next = { ...cur, ...patch };
+  // Whenever the pairing code changes, decode it into the legacy
+  // port + token fields so the rest of the codebase keeps working.
+  if (patch.pairingCode !== undefined) {
+    const decoded = decodePairingCode(patch.pairingCode);
+    if (decoded) {
+      next.port = decoded.port;
+      next.token = decoded.token;
+    }
+  }
   await browser.storage.local.set({ [KEY]: next });
   return next;
 }

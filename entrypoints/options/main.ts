@@ -42,16 +42,12 @@ function render() {
       </div>
     </div>
 
-    <div class="row">
-      <div>
-        <label>IPC port (WebSocket transport)</label>
-        <input type="number" id="port" min="1" max="65535" />
-        <div class="hint">oxdm Settings → Browser integration → IPC port</div>
-      </div>
-      <div>
-        <label>Extension token (WebSocket transport)</label>
-        <input type="password" id="token" autocomplete="off" />
-        <div class="hint">Copy from oxdm Settings → Browser integration</div>
+    <div>
+      <label>Pairing code (WebSocket transport)</label>
+      <input type="text" id="pairingCode" autocomplete="off" placeholder="oxdm1.…" />
+      <div class="hint">
+        Single string from oxdm Settings → Browser integration → Pairing code.
+        Bundles port + token. Native transport ignores this — host self-discovers.
       </div>
     </div>
 
@@ -88,8 +84,7 @@ function render() {
 
   set('transport', settings.transport);
   set('nativeHostName', settings.nativeHostName);
-  set('port', settings.port);
-  set('token', settings.token);
+  set('pairingCode', settings.pairingCode);
   set('minSize', settings.minSize);
   set('scanIntervalMs', settings.scanIntervalMs);
   (document.getElementById('injectButton') as HTMLInputElement).checked = settings.injectButton;
@@ -122,8 +117,7 @@ async function save() {
   const patch: Partial<Settings> = {
     transport: ['auto', 'native', 'ws'].includes(transport) ? transport : 'auto',
     nativeHostName: get('nativeHostName').trim() || DEFAULTS.nativeHostName,
-    port: +get('port') || DEFAULTS.port,
-    token: get('token').trim(),
+    pairingCode: get('pairingCode').trim(),
     minSize: Math.max(0, +get('minSize') || 0),
     scanIntervalMs: Math.max(500, +get('scanIntervalMs') || DEFAULTS.scanIntervalMs),
     injectButton: (document.getElementById('injectButton') as HTMLInputElement).checked,
