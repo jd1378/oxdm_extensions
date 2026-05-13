@@ -88,7 +88,11 @@ export function attachButton(target: HTMLElement, url: string) {
     }
     ev.preventDefault();
     ev.stopPropagation();
-    sendCapture(url, { interactive: false });
+    // Always interactive: the pin attaches to anchors the scanner
+    // classified as download-ish, which can include cross-origin
+    // links on a hostile page. The Add dialog makes the destination
+    // URL visible before any cookies travel.
+    sendCapture(url, { interactive: true });
   });
 }
 
