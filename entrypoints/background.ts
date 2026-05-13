@@ -52,41 +52,37 @@ async function init() {
     await setSettings({ enabled: !settings.enabled });
   });
 
+  // `icons` on context menu items is Firefox-only. Chromium throws
+  // "Unexpected property: 'icons'" when we include it, so we attach
+  // the field only on the Firefox build.
   const iconUrl = browser.runtime.getURL('/icon-16-on.png');
-  // Chromium supports `icons` on context menu items; Firefox ignores
-  // unknown fields. Either way the rest of the entry works.
-  // Link context: always sensible — Chrome already gates `contexts:['link']`.
-  browser.contextMenus.create({
+  const withIcon = (props: Record<string, unknown>) =>
+    import.meta.env.BROWSER === 'firefox'
+      ? { ...props, icons: { '16': iconUrl } }
+      : props;
+  browser.contextMenus.create(withIcon({
     id: 'oxdm-send-link',
     title: 'Download with oxdm',
     contexts: ['link'],
-    icons: { '16': iconUrl },
-  } as any);
-  // Selection context: shown dynamically by the content script when a
-  // selection actually contains at least one URL. Two separate items
-  // so the title reflects singular vs plural without rewrites.
-  browser.contextMenus.create({
+  }) as any);
+  browser.contextMenus.create(withIcon({
     id: 'oxdm-send-selection-one',
     title: 'Download selected link with oxdm',
     contexts: ['selection'],
     visible: false,
-    icons: { '16': iconUrl },
-  } as any);
-  browser.contextMenus.create({
+  }) as any);
+  browser.contextMenus.create(withIcon({
     id: 'oxdm-send-selection-all',
     title: 'Download all selected links with oxdm',
     contexts: ['selection'],
     visible: false,
-    icons: { '16': iconUrl },
-  } as any);
-  // Page context: shown when the in-page scanner has at least one hit.
-  browser.contextMenus.create({
+  }) as any);
+  browser.contextMenus.create(withIcon({
     id: 'oxdm-send-page',
     title: 'Download all detected links with oxdm',
     contexts: ['page'],
     visible: false,
-    icons: { '16': iconUrl },
-  } as any);
+  }) as any);
   browser.contextMenus.onClicked.addListener(onContextMenu);
 
   browser.downloads.onCreated.addListener(onDownloadCreated);
