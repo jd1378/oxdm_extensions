@@ -20,7 +20,7 @@ import type { CaptureRequest } from '@/src/shared/messages';
 
 const HOST_ID = 'oxdm-overlay-host';
 const HIDE_DELAY_MS = 150; // small grace so the cursor can travel from anchor → pin
-const SELECTION_GRACE_MS = 3000;
+const SELECTION_GRACE_MS = 1000;
 
 let hostEl: HTMLDivElement | null = null;
 let shadow: ShadowRoot | null = null;
