@@ -5,7 +5,7 @@ import {
   onSettingsChange,
   type Settings,
 } from '@/src/shared/state';
-import iconUrl from '/icon-48-on.png';
+import iconUrl from '/icon-48.png';
 
 const app = document.getElementById('app')!;
 

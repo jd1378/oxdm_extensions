@@ -58,7 +58,7 @@ async function init() {
   // Cast: WXT generates a strict overload typed to entrypoint paths
   // only; static asset URLs need to bypass it.
   const iconUrl = (browser.runtime.getURL as (p: string) => string)(
-    '/icon-16-on.png',
+    '/icon-16.png',
   );
   const withIcon = (props: Record<string, unknown>) =>
     import.meta.env.BROWSER === 'firefox'
@@ -241,7 +241,7 @@ function notify(title: string, message: string) {
   try {
     browser.notifications?.create?.({
       type: 'basic',
-      iconUrl: 'icon-48-on.png',
+      iconUrl: 'icon-48.png',
       title,
       message,
     });
