@@ -25,19 +25,27 @@ export default defineContentScript({
     // listen on `contextmenu` rather than polling because the menu
     // is only assembled at that moment.
     let lastReport = { selection: -1, page: -1 };
-    const reportCounts = () => {
+    const reportCounts = (ev?: MouseEvent) => {
+      // If the right-click target is a link, the browser already
+      // shows our 'oxdm-send-link' entry — suppress the selection
+      // variant so we don't get two 'Download with oxdm' rows.
+      const target = ev?.target as Element | null;
+      const onLink = !!target?.closest?.('a[href]');
       const selUrls = (() => {
+        if (onLink) return 0;
         const sel = window.getSelection();
         if (!sel || sel.isCollapsed) return 0;
         return urlsFromSelection(sel).length;
       })();
-      const pageUrls = (() => {
-        const seen = new Set<string>();
-        for (const a of document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
-          if (isDownloadishUrl(a.href)) seen.add(a.href);
-        }
-        return seen.size;
-      })();
+      const pageUrls = onLink
+        ? 0
+        : (() => {
+            const seen = new Set<string>();
+            for (const a of document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+              if (isDownloadishUrl(a.href)) seen.add(a.href);
+            }
+            return seen.size;
+          })();
       if (
         lastReport.selection === selUrls &&
         lastReport.page === pageUrls
