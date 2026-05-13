@@ -15,6 +15,7 @@ export default defineConfig({
       'activeTab',
       'scripting',
       'notifications',
+      'nativeMessaging',
     ],
     host_permissions: ['<all_urls>'],
     action: {

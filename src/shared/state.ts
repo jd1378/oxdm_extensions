@@ -1,7 +1,13 @@
 // Persisted extension settings. storage.sync where available, fallback to local.
 
+export type Transport = 'auto' | 'native' | 'ws';
+
 export interface Settings {
   enabled: boolean;
+  /** Transport selection. 'auto' tries native first then falls back to WS. */
+  transport: Transport;
+  /** Native-messaging host id. Must match the installed manifest's `name`. */
+  nativeHostName: string;
   port: number;
   token: string;
   minSize: number; // bytes; below this, browser handles it
@@ -14,6 +20,8 @@ export interface Settings {
 
 export const DEFAULTS: Settings = {
   enabled: true,
+  transport: 'auto',
+  nativeHostName: 'io.oxdm.host',
   port: 27812,
   token: '',
   minSize: 0,

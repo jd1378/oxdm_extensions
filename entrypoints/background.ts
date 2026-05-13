@@ -18,14 +18,14 @@ export default defineBackground(() => {
 async function init() {
   settings = await getSettings();
   applyAction();
-  client.configure(settings.port, settings.token);
+  applyClientConfig(settings);
   if (settings.enabled) client.ensureOpen();
 
   onSettingsChange((s) => {
     const wasEnabled = settings.enabled;
     settings = s;
     applyAction();
-    client.configure(s.port, s.token);
+    applyClientConfig(s);
     if (s.enabled && !wasEnabled) client.ensureOpen();
   });
 
@@ -59,6 +59,15 @@ async function init() {
       return true;
     },
   );
+}
+
+function applyClientConfig(s: Settings) {
+  client.configure({
+    port: s.port,
+    token: s.token,
+    hostName: s.nativeHostName,
+    transport: s.transport,
+  });
 }
 
 function applyAction() {

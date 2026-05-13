@@ -27,12 +27,29 @@ function render() {
 
     <div class="row">
       <div>
-        <label>IPC port</label>
-        <input type="number" id="port" min="1" max="65535" />
-        <div class="hint">Settings → Browser integration → IPC port</div>
+        <label>Transport</label>
+        <select id="transport">
+          <option value="auto">Auto (native, fallback to WebSocket)</option>
+          <option value="native">Native messaging only</option>
+          <option value="ws">WebSocket only</option>
+        </select>
+        <div class="hint">Native skips token entry — host self-discovers from oxdm.db</div>
       </div>
       <div>
-        <label>Extension token</label>
+        <label>Native host name</label>
+        <input type="text" id="nativeHostName" />
+        <div class="hint">Must match the installed manifest's <code>name</code> field</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>IPC port (WebSocket transport)</label>
+        <input type="number" id="port" min="1" max="65535" />
+        <div class="hint">oxdm Settings → Browser integration → IPC port</div>
+      </div>
+      <div>
+        <label>Extension token (WebSocket transport)</label>
         <input type="password" id="token" autocomplete="off" />
         <div class="hint">Copy from oxdm Settings → Browser integration</div>
       </div>
@@ -69,6 +86,8 @@ function render() {
     </div>
   `;
 
+  set('transport', settings.transport);
+  set('nativeHostName', settings.nativeHostName);
   set('port', settings.port);
   set('token', settings.token);
   set('minSize', settings.minSize);
@@ -88,7 +107,10 @@ function render() {
 }
 
 function set(id: string, v: string | number) {
-  const el = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement;
+  const el = document.getElementById(id) as
+    | HTMLInputElement
+    | HTMLTextAreaElement
+    | HTMLSelectElement;
   el.value = String(v);
 }
 function get(id: string): string {
@@ -96,7 +118,10 @@ function get(id: string): string {
 }
 
 async function save() {
+  const transport = get('transport') as Settings['transport'];
   const patch: Partial<Settings> = {
+    transport: ['auto', 'native', 'ws'].includes(transport) ? transport : 'auto',
+    nativeHostName: get('nativeHostName').trim() || DEFAULTS.nativeHostName,
     port: +get('port') || DEFAULTS.port,
     token: get('token').trim(),
     minSize: Math.max(0, +get('minSize') || 0),
