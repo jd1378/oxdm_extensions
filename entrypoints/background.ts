@@ -109,16 +109,15 @@ function applyClientConfig(s: Settings) {
 }
 
 function applyAction() {
-  // We don't swap the icon image for on/off — that would override the
-  // manifest's `theme_icons` declaration and pin one theme variant.
-  // Instead the enabled / disabled state shows as a badge over the
-  // (theme-aware) base icon.
-  if (settings.enabled) {
-    browser.action.setBadgeText({ text: '' });
-  } else {
-    browser.action.setBadgeText({ text: 'off' });
-    browser.action.setBadgeBackgroundColor?.({ color: '#6b7280' });
-  }
+  const suffix = settings.enabled ? 'on' : 'off';
+  browser.action.setIcon({
+    path: {
+      '16': `icon-16-${suffix}.png`,
+      '32': `icon-32-${suffix}.png`,
+      '48': `icon-48-${suffix}.png`,
+      '128': `icon-128-${suffix}.png`,
+    },
+  });
 }
 
 async function handleRuntimeMsg(msg: RuntimeMsg): Promise<unknown> {
