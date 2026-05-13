@@ -65,23 +65,14 @@ async function init() {
     import.meta.env.BROWSER === 'firefox'
       ? { ...props, icons: { '16': iconUrl } }
       : props;
+  // Chromium auto-groups every extension menu item under a single
+  // 'oxdm' parent the moment we register more than one. Stick to a
+  // single item across link / selection / page contexts; retitle
+  // dynamically when the content script signals what we're over.
   browser.contextMenus.create(withIcon({
-    id: 'oxdm-send-link',
+    id: 'oxdm-send',
     title: 'Download with oxdm',
-    contexts: ['link'],
-  }) as any);
-  // One menu item, retitled per selection count.
-  browser.contextMenus.create(withIcon({
-    id: 'oxdm-send-selection',
-    title: 'Download with oxdm',
-    contexts: ['selection'],
-    visible: false,
-  }) as any);
-  browser.contextMenus.create(withIcon({
-    id: 'oxdm-send-page',
-    title: 'Download all detected links with oxdm',
-    contexts: ['page'],
-    visible: false,
+    contexts: ['link', 'selection', 'page'],
   }) as any);
   browser.contextMenus.onClicked.addListener(onContextMenu);
 
@@ -135,44 +126,37 @@ async function handleRuntimeMsg(msg: RuntimeMsg): Promise<unknown> {
 }
 
 async function applyMenuState(selection: number, page: number) {
-  const update = (id: string, props: Record<string, unknown>) => {
-    try {
-      browser.contextMenus.update(id, props as any);
-    } catch {}
-  };
-  update('oxdm-send-selection', {
-    visible: selection > 0,
-    title:
-      selection > 1
-        ? `Download ${selection} selected links with oxdm`
-        : 'Download with oxdm',
-  });
-  update('oxdm-send-page', {
-    visible: page > 0,
-    title: page > 1 ? `Download ${page} detected links with oxdm` : 'Download with oxdm',
-  });
+  // Retitle the single menu item. Selection count wins over page
+  // count when both are present.
+  let title = 'Download with oxdm';
+  if (selection > 1) title = `Download ${selection} selected links with oxdm`;
+  else if (selection === 1) title = 'Download selected link with oxdm';
+  else if (page > 1) title = `Download ${page} detected links with oxdm`;
+  try {
+    browser.contextMenus.update('oxdm-send', { title } as any);
+  } catch {}
 }
 
 async function onContextMenu(info: any, tab?: any) {
-  if (!settings.enabled) return;
-  if (info.menuItemId === 'oxdm-send-link' && info.linkUrl) {
+  if (!settings.enabled || info.menuItemId !== 'oxdm-send') return;
+  // Single item across all contexts — decide intent from info shape.
+  if (info.linkUrl) {
     if (!isPublicHttpUrl(info.linkUrl)) {
       notify('oxdm', `Refused non-public URL: ${info.linkUrl}`);
       return;
     }
     const req = await buildCapture(info.linkUrl, tab, { interactive: true });
     await client.capture(req);
-  } else if (
-    info.menuItemId === 'oxdm-send-selection' &&
-    info.selectionText
-  ) {
+    return;
+  }
+  if (info.selectionText) {
     if (tab?.id != null) {
       browser.tabs.sendMessage(tab.id, { kind: 'oxdm-context-selection' });
     }
-  } else if (info.menuItemId === 'oxdm-send-page') {
-    if (tab?.id != null) {
-      browser.tabs.sendMessage(tab.id, { kind: 'oxdm-context-page' });
-    }
+    return;
+  }
+  if (tab?.id != null) {
+    browser.tabs.sendMessage(tab.id, { kind: 'oxdm-context-page' });
   }
 }
 
