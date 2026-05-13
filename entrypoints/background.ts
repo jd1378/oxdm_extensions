@@ -71,14 +71,8 @@ async function init() {
     contexts: ['link'],
   }) as any);
   browser.contextMenus.create(withIcon({
-    id: 'oxdm-send-selection-one',
-    title: 'Download selected link with oxdm',
-    contexts: ['selection'],
-    visible: false,
-  }) as any);
-  browser.contextMenus.create(withIcon({
-    id: 'oxdm-send-selection-all',
-    title: 'Download all selected links with oxdm',
+    id: 'oxdm-send-selection',
+    title: 'Download selected links with oxdm',
     contexts: ['selection'],
     visible: false,
   }) as any);
@@ -148,8 +142,7 @@ async function applyMenuState(selection: number, page: number) {
       browser.contextMenus.update(id, { visible });
     } catch {}
   };
-  set('oxdm-send-selection-one', selection === 1);
-  set('oxdm-send-selection-all', selection > 1);
+  set('oxdm-send-selection', selection > 0);
   set('oxdm-send-page', page > 0);
 }
 
@@ -163,8 +156,7 @@ async function onContextMenu(info: any, tab?: any) {
     const req = await buildCapture(info.linkUrl, tab, { interactive: true });
     await client.capture(req);
   } else if (
-    (info.menuItemId === 'oxdm-send-selection-one' ||
-      info.menuItemId === 'oxdm-send-selection-all') &&
+    info.menuItemId === 'oxdm-send-selection' &&
     info.selectionText
   ) {
     if (tab?.id != null) {
