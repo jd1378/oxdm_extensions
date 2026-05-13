@@ -40,7 +40,7 @@ export class OxdmClient {
   private backoffMs = 1000;
   private port = 27812;
   private token = '';
-  private hostName = 'io.oxdm.host';
+  private hostName = 'io.github.jd1378.oxdm.host';
   private transportPref: Transport = 'auto';
   private listeners = new Set<(s: ConnState) => void>();
   private autoFellBackToWs = false;

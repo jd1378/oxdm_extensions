@@ -13,7 +13,6 @@ export default defineConfig({
       'contextMenus',
       'cookies',
       'activeTab',
-      'scripting',
       'notifications',
       'nativeMessaging',
     ],
@@ -37,7 +36,7 @@ export default defineConfig({
       ? {
           browser_specific_settings: {
             gecko: {
-              id: 'oxdm@oxdm.io',
+              id: 'oxdm@jd1378.github.io',
               strict_min_version: '115.0',
             },
           },

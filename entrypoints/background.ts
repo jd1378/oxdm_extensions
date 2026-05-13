@@ -33,22 +33,60 @@ async function init() {
     browser.action.setTitle({
       title: `oxdm — ${settings.enabled ? 'on' : 'off'} (${cs})`,
     });
+    // Tell every content script whether the host is reachable so they
+    // can show / hide injected affordances. Best-effort broadcast.
+    browser.tabs
+      .query({})
+      .then((tabs) => {
+        for (const t of tabs) {
+          if (t.id == null) continue;
+          browser.tabs
+            .sendMessage(t.id, { kind: 'oxdm-conn', state: cs })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
   });
 
   browser.action.onClicked.addListener(async () => {
     await setSettings({ enabled: !settings.enabled });
   });
 
+  const iconUrl = browser.runtime.getURL('/icon-16-on.png');
+  // Chromium supports `icons` on context menu items; Firefox ignores
+  // unknown fields. Either way the rest of the entry works.
+  // Link context: always sensible — Chrome already gates `contexts:['link']`.
   browser.contextMenus.create({
     id: 'oxdm-send-link',
-    title: 'Send link to oxdm',
+    title: 'Download with oxdm',
     contexts: ['link'],
-  });
+    icons: { '16': iconUrl },
+  } as any);
+  // Selection context: shown dynamically by the content script when a
+  // selection actually contains at least one URL. Two separate items
+  // so the title reflects singular vs plural without rewrites.
   browser.contextMenus.create({
-    id: 'oxdm-send-selection',
-    title: 'Send links in selection to oxdm',
+    id: 'oxdm-send-selection-one',
+    title: 'Download selected link with oxdm',
     contexts: ['selection'],
-  });
+    visible: false,
+    icons: { '16': iconUrl },
+  } as any);
+  browser.contextMenus.create({
+    id: 'oxdm-send-selection-all',
+    title: 'Download all selected links with oxdm',
+    contexts: ['selection'],
+    visible: false,
+    icons: { '16': iconUrl },
+  } as any);
+  // Page context: shown when the in-page scanner has at least one hit.
+  browser.contextMenus.create({
+    id: 'oxdm-send-page',
+    title: 'Download all detected links with oxdm',
+    contexts: ['page'],
+    visible: false,
+    icons: { '16': iconUrl },
+  } as any);
   browser.contextMenus.onClicked.addListener(onContextMenu);
 
   browser.downloads.onCreated.addListener(onDownloadCreated);
@@ -95,7 +133,24 @@ async function handleRuntimeMsg(msg: RuntimeMsg): Promise<unknown> {
       return client.batch(msg.items, true);
     case 'connection-status':
       return { state: client.getState() };
+    case 'menu-state':
+      await applyMenuState(msg.selection, msg.page);
+      return { ok: true };
   }
+}
+
+async function applyMenuState(selection: number, page: number) {
+  // Selection: zero hides both; one shows the singular; >1 shows the
+  // plural. Page: zero hides; any positive shows the "all detected"
+  // entry. Failures (e.g. menu not yet ready) are ignored.
+  const set = (id: string, visible: boolean) => {
+    try {
+      browser.contextMenus.update(id, { visible });
+    } catch {}
+  };
+  set('oxdm-send-selection-one', selection === 1);
+  set('oxdm-send-selection-all', selection > 1);
+  set('oxdm-send-page', page > 0);
 }
 
 async function onContextMenu(info: any, tab?: any) {
@@ -103,9 +158,17 @@ async function onContextMenu(info: any, tab?: any) {
   if (info.menuItemId === 'oxdm-send-link' && info.linkUrl) {
     const req = await buildCapture(info.linkUrl, tab, { interactive: true });
     await client.capture(req);
-  } else if (info.menuItemId === 'oxdm-send-selection' && info.selectionText) {
+  } else if (
+    (info.menuItemId === 'oxdm-send-selection-one' ||
+      info.menuItemId === 'oxdm-send-selection-all') &&
+    info.selectionText
+  ) {
     if (tab?.id != null) {
       browser.tabs.sendMessage(tab.id, { kind: 'oxdm-context-selection' });
+    }
+  } else if (info.menuItemId === 'oxdm-send-page') {
+    if (tab?.id != null) {
+      browser.tabs.sendMessage(tab.id, { kind: 'oxdm-context-page' });
     }
   }
 }

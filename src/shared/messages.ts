@@ -81,4 +81,5 @@ export type RuntimeMsg =
   | { kind: 'set-enabled'; enabled: boolean }
   | { kind: 'capture'; req: CaptureRequest }
   | { kind: 'batch'; items: CaptureRequest[] }
-  | { kind: 'connection-status' };
+  | { kind: 'connection-status' }
+  | { kind: 'menu-state'; selection: number; page: number };

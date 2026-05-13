@@ -21,7 +21,7 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   enabled: true,
   transport: 'auto',
-  nativeHostName: 'io.oxdm.host',
+  nativeHostName: 'io.github.jd1378.oxdm.host',
   port: 27812,
   token: '',
   minSize: 0,
