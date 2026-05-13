@@ -24,17 +24,17 @@ export default defineConfig({
     action: {
       default_title: 'oxdm — click to toggle',
       default_icon: {
-        '16': 'icon-16.png',
-        '32': 'icon-32.png',
-        '48': 'icon-48.png',
-        '128': 'icon-128.png',
+        '16': 'icon-16-on.png',
+        '32': 'icon-32-on.png',
+        '48': 'icon-48-on.png',
+        '128': 'icon-128-on.png',
       },
     },
     icons: {
-      '16': 'icon-16.png',
-      '32': 'icon-32.png',
-      '48': 'icon-48.png',
-      '128': 'icon-128.png',
+      '16': 'icon-16-on.png',
+      '32': 'icon-32-on.png',
+      '48': 'icon-48-on.png',
+      '128': 'icon-128-on.png',
     },
     ...(browser === 'firefox'
       ? {
