@@ -27,11 +27,71 @@ export function extOf(urlStr: string): string | null {
 }
 
 export function isDownloadishUrl(urlStr: string): boolean {
+  if (!isPublicHttpUrl(urlStr)) return false;
   const e = extOf(urlStr);
   if (e && DOWNLOAD_EXTS.has(e)) return true;
-  // common dynamic-download patterns
   if (/[?&](attachment|download|dl|file)=/i.test(urlStr)) return true;
   if (/\/(download|attachment|file)s?\//i.test(urlStr)) return true;
+  return false;
+}
+
+/**
+ * Mirror of oxdm's `ipc::guard_public_http_url`. Reject non-http(s)
+ * schemes plus any host that is loopback / private / link-local. We
+ * apply this on the extension side so a malicious selection on
+ * attacker.com cannot trick the user into pointing oxdm at internal
+ * infrastructure (router admin panels, intranet pages, localhost
+ * services). The daemon repeats the same check — both sides defend
+ * defence-in-depth.
+ */
+export function isPublicHttpUrl(urlStr: string): boolean {
+  let u: URL;
+  try {
+    const base = typeof location !== 'undefined' ? location.href : undefined;
+    u = new URL(urlStr, base);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  let host = u.hostname.toLowerCase();
+  // Some runtimes return IPv6 literals with their surrounding brackets.
+  if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1);
+  if (!host) return false;
+  if (host === 'localhost' || host.endsWith('.localhost')) return false;
+  if (isIpv4Literal(host)) return !isPrivateIpv4(host);
+  if (host.includes(':')) return !isPrivateIpv6(host);
+  return true;
+}
+
+function isIpv4Literal(h: string): boolean {
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(h);
+}
+
+function isPrivateIpv4(h: string): boolean {
+  const o = h.split('.').map((n) => parseInt(n, 10));
+  if (o.some((n) => isNaN(n) || n < 0 || n > 255)) return true;
+  // 10/8, 172.16/12, 192.168/16, 127/8, 169.254/16, 100.64/10 (CGNAT),
+  // 0/8 unspecified, 224/4 multicast, 240/4 reserved, 255 broadcast.
+  if (o[0] === 10) return true;
+  if (o[0] === 127) return true;
+  if (o[0] === 0) return true;
+  if (o[0] === 169 && o[1] === 254) return true;
+  if (o[0] === 172 && o[1] >= 16 && o[1] <= 31) return true;
+  if (o[0] === 192 && o[1] === 168) return true;
+  if (o[0] === 100 && (o[1] & 0xc0) === 0x40) return true;
+  if (o[0] >= 224) return true;
+  return false;
+}
+
+function isPrivateIpv6(h: string): boolean {
+  if (h === '::1' || h === '::') return true;
+  if (h.startsWith('fe80') || h.startsWith('fe9') || h.startsWith('fea') || h.startsWith('feb'))
+    return true;
+  // fc00::/7 ULA.
+  const first = h.split(':')[0] || '';
+  const hi = parseInt(first.padStart(4, '0').slice(0, 2), 16);
+  if (!isNaN(hi) && (hi & 0xfe) === 0xfc) return true;
+  if (h.startsWith('ff')) return true; // multicast
   return false;
 }
 

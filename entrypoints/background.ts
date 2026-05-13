@@ -5,7 +5,7 @@ import {
   setSettings,
   type Settings,
 } from '@/src/shared/state';
-import { extOf } from '@/src/shared/heuristics';
+import { extOf, isPublicHttpUrl } from '@/src/shared/heuristics';
 import type { CaptureRequest, RuntimeMsg } from '@/src/shared/messages';
 
 let settings: Settings;
@@ -156,6 +156,10 @@ async function applyMenuState(selection: number, page: number) {
 async function onContextMenu(info: any, tab?: any) {
   if (!settings.enabled) return;
   if (info.menuItemId === 'oxdm-send-link' && info.linkUrl) {
+    if (!isPublicHttpUrl(info.linkUrl)) {
+      notify('oxdm', `Refused non-public URL: ${info.linkUrl}`);
+      return;
+    }
     const req = await buildCapture(info.linkUrl, tab, { interactive: true });
     await client.capture(req);
   } else if (
@@ -201,7 +205,7 @@ async function readCookieHeader(url: string): Promise<string | undefined> {
 
 async function onDownloadCreated(item: any) {
   if (!settings.enabled) return;
-  if (!item.url || !/^https?:/i.test(item.url)) return;
+  if (!item.url || !isPublicHttpUrl(item.url)) return;
   if (settings.minSize > 0 && item.fileSize > 0 && item.fileSize < settings.minSize) return;
   const mime = item.mime ?? '';
   if (settings.skipMimePrefixes.some((p) => mime.startsWith(p))) return;
