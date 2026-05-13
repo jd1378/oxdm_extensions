@@ -111,9 +111,23 @@ function onMouseOver(ev: MouseEvent) {
 
 let selectionTimer: number | null = null;
 let lastSelectionKey = '';
+// 2s grace so accidental drag-selections / double-clicks don't flash
+// the floating button. The handler still runs immediately on
+// "selection collapsed" (no debounce there) to keep the dismiss
+// timer responsive.
+const SELECTION_SHOW_DELAY_MS = 2000;
 function onSelectionChange() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed) {
+    if (selectionTimer != null) {
+      clearTimeout(selectionTimer);
+      selectionTimer = null;
+    }
+    handleSelection();
+    return;
+  }
   if (selectionTimer != null) clearTimeout(selectionTimer);
-  selectionTimer = self.setTimeout(handleSelection, 200);
+  selectionTimer = self.setTimeout(handleSelection, SELECTION_SHOW_DELAY_MS);
 }
 
 function handleSelection() {
