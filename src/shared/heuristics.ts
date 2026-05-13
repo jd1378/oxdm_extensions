@@ -95,18 +95,56 @@ function isPrivateIpv6(h: string): boolean {
   return false;
 }
 
+// Multilingual "download" cue words. Matched as a substring against
+// the element's textContent / aria-label / title / class / id so we
+// catch buttons like 'دانلود با لینک مستقیم' or 'ダウンロード' that
+// don't fit the Latin-only regex.
+const DOWNLOAD_WORDS = [
+  'download', 'get', 'grab', 'save',
+  'télécharger', 'descargar', 'baixar', 'scaricare', 'herunterladen',
+  'скачать', 'pobierz', 'ladda ned', 'lataa', 'last ned',
+  'دانلود', 'تحميل', 'تنزيل',
+  '下载', '下載', 'ダウンロード', '다운로드',
+  'unduh', 'tải xuống', 'מוריד', 'הורד',
+];
+
+function elementHasDownloadCue(el: Element): boolean {
+  const probes: string[] = [];
+  const txt = (el.textContent ?? '').trim();
+  if (txt && txt.length < 80) probes.push(txt);
+  const al = el.getAttribute('aria-label');
+  if (al) probes.push(al);
+  const title = el.getAttribute('title');
+  if (title) probes.push(title);
+  const cls = el.getAttribute('class');
+  if (cls) probes.push(cls);
+  const id = el.getAttribute('id');
+  if (id) probes.push(id);
+  const lower = probes.join(' ').toLowerCase();
+  if (!lower) return false;
+  return DOWNLOAD_WORDS.some((w) => lower.includes(w));
+}
+
 export function isDownloadishElement(el: Element): boolean {
   if (el instanceof HTMLAnchorElement) {
     if (el.hasAttribute('download')) return true;
     if (el.href && isDownloadishUrl(el.href)) return true;
   }
-  const txt = (el.textContent ?? '').trim().toLowerCase();
-  if (txt.length > 0 && txt.length < 40) {
-    if (/^(download|get|grab|save|télécharger|descargar)\b/.test(txt)) {
-      // only count if the element resolves to an anchor or has href-like attrs
-      const a = el.closest('a');
+  if (elementHasDownloadCue(el)) {
+    const a = el instanceof HTMLAnchorElement ? el : el.closest('a');
+    if (a && a.href) return true;
+  }
+  // The cue may sit on a wrapping parent (a button whose label is in
+  // a child <span>). Walk up a couple of levels.
+  let parent: Element | null = el.parentElement;
+  let hops = 0;
+  while (parent && hops < 3) {
+    if (elementHasDownloadCue(parent)) {
+      const a = el instanceof HTMLAnchorElement ? el : el.closest('a');
       if (a && a.href) return true;
     }
+    parent = parent.parentElement;
+    hops++;
   }
   return false;
 }
