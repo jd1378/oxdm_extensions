@@ -108,6 +108,9 @@ const css = `
 // ─── Pin (hover-anchored) ─────────────────────────────────────────
 
 const detectedAnchors = new Set<HTMLAnchorElement>();
+// ✕ on the pin permanently dismisses that anchor until the page is
+// reloaded (the content script reloads with it, clearing the set).
+const dismissedAnchors = new WeakSet<HTMLAnchorElement>();
 
 /** Called by the scanner whenever an anchor passes download heuristics.
  *  If the cursor is currently sitting on that anchor, the pin shows
@@ -119,6 +122,7 @@ export function registerDetected(anchor: HTMLAnchorElement) {
 }
 
 function cursorIsOver(anchor: HTMLAnchorElement): boolean {
+  if (dismissedAnchors.has(anchor)) return false;
   if (!Number.isFinite(lastMousePos.x)) return false;
   const el = document.elementFromPoint(lastMousePos.x, lastMousePos.y);
   if (!el) return false;
@@ -145,7 +149,7 @@ function onDocMouseOver(ev: MouseEvent) {
   const t = ev.target as Element | null;
   if (!t) return;
   const anchor = t.closest<HTMLAnchorElement>('a[href]');
-  if (anchor && detectedAnchors.has(anchor)) {
+  if (anchor && detectedAnchors.has(anchor) && !dismissedAnchors.has(anchor)) {
     showPin(anchor);
   }
 }
@@ -195,7 +199,8 @@ function showPin(anchor: HTMLAnchorElement) {
   btn.querySelector('.x')!.addEventListener('click', (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
-    // ✕: hide for this anchor temporarily — re-hover re-shows
+    // ✕: permanent dismiss for this anchor until the page reloads.
+    if (pinTarget) dismissedAnchors.add(pinTarget);
     hidePinNow();
   });
   btn.querySelector('.body')!.addEventListener('click', (ev) => {
