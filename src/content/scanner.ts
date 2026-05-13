@@ -1,12 +1,20 @@
-// In-page scanner. Periodic viewport sweep + hover + selection.
-// Dedupes via WeakSet of elements + Set of URLs for synthetic targets.
+// In-page scanner. Periodic DOM sweep records "download-ish" anchors;
+// the injector only materializes a pin when the cursor approaches one
+// of those anchors. Selection changes drive a separate floating button.
 
-import { isDownloadishElement, urlsFromSelection, isPublicHttpUrl } from '@/src/shared/heuristics';
 import {
-  attachPin,
+  isDownloadishElement,
+  urlsFromSelection,
+  isPublicHttpUrl,
+} from '@/src/shared/heuristics';
+import {
+  registerDetected,
   removeAllButtons,
   removeSelectionButton,
+  scheduleSelectionDismiss,
   showSelectionButton,
+  startPinHoverTracking,
+  stopPinHoverTracking,
 } from './injector';
 
 type StopFn = () => void;
@@ -26,16 +34,16 @@ export function startScanner(intervalMs: number): ScannerHandle {
 
   runScan();
   intervalHandle = self.setInterval(runScan, intervalMs);
+  startPinHoverTracking();
 
-  // hover triggers
+  // Hover on a previously-unscanned candidate → run heuristic right
+  // away so we don't make the user wait for the periodic sweep.
   document.addEventListener('mouseover', onMouseOver, { passive: true });
 
-  // selection trigger
   document.addEventListener('selectionchange', onSelectionChange, {
     passive: true,
   });
 
-  // stop interval when page is fully loaded; do one final scan
   const onLoad = () => {
     if (intervalHandle != null) {
       clearInterval(intervalHandle);
@@ -49,9 +57,9 @@ export function startScanner(intervalMs: number): ScannerHandle {
     window.addEventListener('load', onLoad, { once: true });
   }
 
-  // observe SPA navigations + new nodes (debounced via timer)
   observerHandle = new MutationObserver(() => {
-    // cheap: rely on the periodic loop; just mark scan dirty
+    // No-op: rely on the periodic loop. A future optimization could
+    // re-run only on subtree additions intersecting the cursor.
   });
   observerHandle.observe(document.documentElement, {
     subtree: true,
@@ -70,6 +78,7 @@ export function stop() {
   observerHandle = null;
   document.removeEventListener('mouseover', onMouseOver);
   document.removeEventListener('selectionchange', onSelectionChange);
+  stopPinHoverTracking();
   removeAllButtons();
 }
 
@@ -81,7 +90,7 @@ function runScan() {
     if (!isDownloadishElement(a)) continue;
     if (!a.href || !isPublicHttpUrl(a.href)) continue;
     seenElements.add(a);
-    attachPin(a, a.href);
+    registerDetected(a);
   }
 }
 
@@ -89,17 +98,14 @@ let hoverTimer: number | null = null;
 function onMouseOver(ev: MouseEvent) {
   const t = ev.target as Element | null;
   if (!t) return;
-  const a = t.closest('a, button, [role=button]');
+  const a = t.closest<HTMLAnchorElement>('a[href]');
   if (!a || seenElements.has(a)) return;
   if (hoverTimer != null) clearTimeout(hoverTimer);
   hoverTimer = self.setTimeout(() => {
     if (!isDownloadishElement(a)) return;
+    if (!isPublicHttpUrl(a.href)) return;
     seenElements.add(a);
-    const anchor =
-      a instanceof HTMLAnchorElement ? a : a.closest<HTMLAnchorElement>('a');
-    if (anchor && anchor.href && isPublicHttpUrl(anchor.href)) {
-      attachPin(anchor, anchor.href);
-    }
+    registerDetected(a);
   }, 80);
 }
 
@@ -107,13 +113,15 @@ let selectionTimer: number | null = null;
 let lastSelectionKey = '';
 function onSelectionChange() {
   if (selectionTimer != null) clearTimeout(selectionTimer);
-  selectionTimer = self.setTimeout(handleSelection, 250);
+  selectionTimer = self.setTimeout(handleSelection, 200);
 }
 
 function handleSelection() {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed) {
-    removeSelectionButton();
+    // Keep the button on screen for SELECTION_GRACE_MS so accidental
+    // clicks outside the selected text don't wipe it instantly.
+    scheduleSelectionDismiss();
     lastSelectionKey = '';
     return;
   }
@@ -128,4 +136,3 @@ function handleSelection() {
   lastSelectionKey = key;
   showSelectionButton(sel, urls);
 }
-

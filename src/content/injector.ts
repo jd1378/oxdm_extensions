@@ -1,23 +1,30 @@
 // Two overlay surfaces inside one Shadow-DOM host:
 //
-//   1. **Pin** — a tiny floating "Download" pill anchored next to a
-//      detected download-ish anchor. One per detection. ✕ dismisses
-//      that pin only. Repositioned on scroll / resize.
+//   1. **Pin** — one floating "Download" pill that only materializes
+//      when the cursor is over (or just left) a detected anchor.
+//      Positioned next to that anchor, never crowds the page.
 //
-//   2. **Selection button** — appears below the user's active text
-//      selection when that selection contains URLs.
+//   2. **Selection button** — appears near the cursor when the user
+//      selects text that contains URLs. Stays until ✕ is clicked or
+//      the user's selection has been collapsed for 3 s.
 //
-// Host page CSS can't reach either widget (Shadow-DOM mode 'open',
-// but no host selector reaches in).
+// Host page CSS can't reach either widget (Shadow-DOM mode 'open'
+// but page selectors can't enter).
 
 import iconSrc from '/icon-32.png';
 import type { CaptureRequest } from '@/src/shared/messages';
 
 const HOST_ID = 'oxdm-overlay-host';
+const HIDE_DELAY_MS = 150; // small grace so the cursor can travel from anchor → pin
+const SELECTION_GRACE_MS = 3000;
+
 let hostEl: HTMLDivElement | null = null;
 let shadow: ShadowRoot | null = null;
 let selectionButton: HTMLElement | null = null;
-const pins = new Map<Element, HTMLElement>();
+let selectionGraceTimer: ReturnType<typeof setTimeout> | null = null;
+let pinButton: HTMLElement | null = null;
+let pinTarget: HTMLAnchorElement | null = null;
+let pinHideTimer: ReturnType<typeof setTimeout> | null = null;
 
 function ensureHost(): ShadowRoot {
   if (shadow) return shadow;
@@ -37,132 +44,277 @@ const css = `
 :host, * { box-sizing: border-box; }
 .btn, .pin {
   position: absolute;
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 8px 4px 6px;
+  display: inline-flex; align-items: stretch;
   background: #1f2937;
   color: #f9fafb;
-  font: 600 12px/1.1 system-ui, -apple-system, Segoe UI, sans-serif;
-  border-radius: 999px;
-  box-shadow: 0 4px 14px rgba(0,0,0,.45);
+  font: 600 14px/1.1 system-ui, -apple-system, Segoe UI, sans-serif;
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.5);
   pointer-events: auto;
-  cursor: pointer;
   user-select: none;
   white-space: nowrap;
+  overflow: hidden;
 }
-.btn img, .pin img { width: 16px; height: 16px; display: block; border-radius: 50%; }
-.btn:hover, .pin:hover { background: #2563eb; }
+.btn .body, .pin .body {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 10px 16px 10px 12px;
+  cursor: pointer;
+}
+.btn .body:hover, .pin .body:hover { background: #2563eb; }
+.btn img, .pin img { width: 22px; height: 22px; display: block; border-radius: 50%; }
 .x {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 16px; height: 16px; margin-left: 2px;
-  border-radius: 50%;
-  background: rgba(255,255,255,.08);
-  font-size: 11px; line-height: 1;
-  color: rgba(255,255,255,.75);
+  width: 38px;
+  padding: 0;
+  border-right: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.85);
+  cursor: pointer;
+  font: 700 18px/1 system-ui, sans-serif;
 }
-.x:hover { background: rgba(255,255,255,.2); color: #fff; }
+.x:hover { background: rgba(255,255,255,.22); color: #fff; }
 `;
 
-/** Attach a pin next to `target`. Idempotent per element. */
-export function attachPin(target: HTMLElement, url: string) {
-  if (pins.has(target)) return;
+// ─── Pin (hover-anchored) ─────────────────────────────────────────
+
+const detectedAnchors = new Set<HTMLAnchorElement>();
+
+/** Called by the scanner whenever an anchor passes download heuristics. */
+export function registerDetected(anchor: HTMLAnchorElement) {
+  detectedAnchors.add(anchor);
+}
+
+export function clearDetected() {
+  detectedAnchors.clear();
+  hidePinNow();
+}
+
+export function startPinHoverTracking() {
+  document.addEventListener('mouseover', onDocMouseOver, { passive: true });
+  document.addEventListener('mouseout', onDocMouseOut, { passive: true });
+}
+
+export function stopPinHoverTracking() {
+  document.removeEventListener('mouseover', onDocMouseOver);
+  document.removeEventListener('mouseout', onDocMouseOut);
+  hidePinNow();
+}
+
+function onDocMouseOver(ev: MouseEvent) {
+  const t = ev.target as Element | null;
+  if (!t) return;
+  const anchor = t.closest<HTMLAnchorElement>('a[href]');
+  if (anchor && detectedAnchors.has(anchor)) {
+    showPin(anchor);
+  }
+}
+
+function onDocMouseOut(ev: MouseEvent) {
+  const relatedTarget = ev.relatedTarget as Element | null;
+  // Cursor leaving the anchor → schedule hide. If it lands on the pin
+  // body, pin's own listener cancels the timer.
+  if (!pinTarget) return;
+  if (
+    relatedTarget &&
+    (pinTarget.contains(relatedTarget) || pinButton?.contains(relatedTarget))
+  )
+    return;
+  scheduleHidePin();
+}
+
+function showPin(anchor: HTMLAnchorElement) {
+  if (pinHideTimer) {
+    clearTimeout(pinHideTimer);
+    pinHideTimer = null;
+  }
   const root = ensureHost();
+  if (pinTarget === anchor && pinButton) {
+    repositionPin();
+    return;
+  }
+  // Different anchor → rebuild
+  if (pinButton) pinButton.remove();
   const btn = document.createElement('div');
   btn.className = 'pin';
-  btn.title = `Send to oxdm — ${url}`;
-  btn.innerHTML = `<img alt="" /><span>Download</span><span class="x" title="hide">✕</span>`;
+  btn.innerHTML = `
+    <span class="x" title="hide">✕</span>
+    <span class="body"><img alt="" /><span>Download</span></span>
+  `;
   (btn.querySelector('img') as HTMLImageElement).src = iconSrc;
-  root.appendChild(btn);
-  pins.set(target, btn);
+  btn.title = `Send to oxdm — ${anchor.href}`;
 
-  const reposition = () => {
-    if (!document.contains(target)) {
-      detach(target);
-      return;
+  btn.addEventListener('mouseenter', () => {
+    if (pinHideTimer) {
+      clearTimeout(pinHideTimer);
+      pinHideTimer = null;
     }
-    const r = target.getBoundingClientRect();
-    if (r.width === 0 && r.height === 0) {
-      btn.style.display = 'none';
-      return;
-    }
-    btn.style.display = '';
-    btn.style.top = `${r.top + window.scrollY - 2}px`;
-    btn.style.left = `${r.right + window.scrollX + 6}px`;
-  };
-  reposition();
-  const ro = new ResizeObserver(reposition);
-  ro.observe(target);
-  window.addEventListener('scroll', reposition, { passive: true });
-  window.addEventListener('resize', reposition);
-  (btn as any).__ro = ro;
-  (btn as any).__reposition = reposition;
+  });
+  btn.addEventListener('mouseleave', () => scheduleHidePin());
 
-  btn.addEventListener('click', (ev) => {
-    const t = ev.target as Element | null;
-    if (t && t.classList.contains('x')) {
-      detach(target);
-      return;
-    }
+  btn.querySelector('.x')!.addEventListener('click', (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
-    sendCapture(url, { interactive: true });
+    // ✕: hide for this anchor temporarily — re-hover re-shows
+    hidePinNow();
   });
+  btn.querySelector('.body')!.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    sendCapture(anchor.href, { interactive: true });
+    hidePinNow();
+  });
+
+  root.appendChild(btn);
+  pinButton = btn;
+  pinTarget = anchor;
+  repositionPin();
+
+  window.addEventListener('scroll', repositionPin, { passive: true });
+  window.addEventListener('resize', repositionPin);
 }
 
-function detach(target: Element) {
-  const btn = pins.get(target);
-  if (!btn) return;
-  (btn as any).__ro?.disconnect?.();
-  const rp = (btn as any).__reposition;
-  if (rp) {
-    window.removeEventListener('scroll', rp);
-    window.removeEventListener('resize', rp);
+function repositionPin() {
+  if (!pinButton || !pinTarget) return;
+  if (!document.contains(pinTarget)) {
+    hidePinNow();
+    return;
   }
-  btn.remove();
-  pins.delete(target);
-}
-
-export function removeAllButtons() {
-  for (const t of [...pins.keys()]) detach(t);
-  removeSelectionButton();
-  if (hostEl) {
-    hostEl.remove();
-    hostEl = null;
-    shadow = null;
+  const r = pinTarget.getBoundingClientRect();
+  if (r.width === 0 && r.height === 0) {
+    pinButton.style.display = 'none';
+    return;
   }
+  pinButton.style.display = '';
+  pinButton.style.top = `${r.top + window.scrollY - 4}px`;
+  pinButton.style.left = `${r.right + window.scrollX + 8}px`;
 }
 
-export function showSelectionButton(sel: Selection, urls: string[]) {
+function scheduleHidePin() {
+  if (pinHideTimer) clearTimeout(pinHideTimer);
+  pinHideTimer = setTimeout(hidePinNow, HIDE_DELAY_MS);
+}
+
+function hidePinNow() {
+  if (pinHideTimer) {
+    clearTimeout(pinHideTimer);
+    pinHideTimer = null;
+  }
+  if (pinButton) {
+    pinButton.remove();
+    pinButton = null;
+  }
+  pinTarget = null;
+  window.removeEventListener('scroll', repositionPin);
+  window.removeEventListener('resize', repositionPin);
+}
+
+// ─── Selection floating button (cursor-anchored) ──────────────────
+
+let lastMousePos = { x: 0, y: 0 };
+document.addEventListener(
+  'mousemove',
+  (e) => {
+    lastMousePos = { x: e.clientX, y: e.clientY };
+  },
+  { passive: true, capture: true },
+);
+
+export function showSelectionButton(_sel: Selection, urls: string[]) {
   const root = ensureHost();
-  removeSelectionButton();
-  const rect = sel.getRangeAt(0).getBoundingClientRect();
-  if (rect.width === 0 && rect.height === 0) return;
+  if (selectionGraceTimer) {
+    clearTimeout(selectionGraceTimer);
+    selectionGraceTimer = null;
+  }
+  if (selectionButton) {
+    // Already showing — just update label + reposition near current cursor.
+    updateSelectionLabel(urls);
+    placeAtCursor(selectionButton);
+    bindSelectionClick(urls);
+    return;
+  }
   const btn = document.createElement('div');
   btn.className = 'btn';
-  btn.innerHTML = `<img alt="" /><span>Download Selected${urls.length > 1 ? ` (${urls.length})` : ''}</span><span class="x" title="dismiss">✕</span>`;
+  btn.innerHTML = `
+    <span class="x" title="dismiss">✕</span>
+    <span class="body"><img alt="" /><span class="lbl"></span></span>
+  `;
   (btn.querySelector('img') as HTMLImageElement).src = iconSrc;
-  btn.style.top = `${rect.bottom + window.scrollY + 4}px`;
-  btn.style.left = `${rect.left + window.scrollX}px`;
+  updateSelectionLabel(urls, btn);
+
   btn.addEventListener('mousedown', (ev) => ev.preventDefault());
-  btn.addEventListener('click', (ev) => {
-    const t = ev.target as Element | null;
-    if (t && t.classList.contains('x')) {
-      removeSelectionButton();
-      return;
-    }
+  btn.querySelector('.x')!.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    removeSelectionButton();
+  });
+
+  root.appendChild(btn);
+  selectionButton = btn;
+  placeAtCursor(btn);
+  bindSelectionClick(urls);
+}
+
+function bindSelectionClick(urls: string[]) {
+  if (!selectionButton) return;
+  const body = selectionButton.querySelector<HTMLElement>('.body')!;
+  // Replace listener by cloning the node.
+  const fresh = body.cloneNode(true) as HTMLElement;
+  body.replaceWith(fresh);
+  fresh.addEventListener('click', (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
     if (urls.length === 1) sendCapture(urls[0], { interactive: true });
     else sendBatch(urls);
     removeSelectionButton();
   });
-  root.appendChild(btn);
-  selectionButton = btn;
+}
+
+function updateSelectionLabel(urls: string[], target?: HTMLElement) {
+  const btn = target ?? selectionButton;
+  if (!btn) return;
+  const lbl = btn.querySelector('.lbl') as HTMLElement | null;
+  if (!lbl) return;
+  lbl.textContent =
+    urls.length > 1 ? `Download Selected (${urls.length})` : 'Download Selected';
+}
+
+function placeAtCursor(btn: HTMLElement) {
+  const x = lastMousePos.x + window.scrollX + 12;
+  const y = lastMousePos.y + window.scrollY + 14;
+  btn.style.left = `${x}px`;
+  btn.style.top = `${y}px`;
+}
+
+/** Called when the user collapses the selection. Schedules a 3s
+ *  dismiss timer; cancelled if a new selection is made. */
+export function scheduleSelectionDismiss() {
+  if (!selectionButton) return;
+  if (selectionGraceTimer) clearTimeout(selectionGraceTimer);
+  selectionGraceTimer = setTimeout(removeSelectionButton, SELECTION_GRACE_MS);
 }
 
 export function removeSelectionButton() {
+  if (selectionGraceTimer) {
+    clearTimeout(selectionGraceTimer);
+    selectionGraceTimer = null;
+  }
   if (selectionButton) {
     selectionButton.remove();
     selectionButton = null;
+  }
+}
+
+// ─── Shared lifecycle ─────────────────────────────────────────────
+
+export function removeAllButtons() {
+  clearDetected();
+  hidePinNow();
+  removeSelectionButton();
+  stopPinHoverTracking();
+  if (hostEl) {
+    hostEl.remove();
+    hostEl = null;
+    shadow = null;
   }
 }
 
