@@ -125,3 +125,38 @@ export function extractUrls(text: string): string[] {
 function stripTrailingPunct(s: string) {
   return s.replace(/[)\].,;:!?'"]+$/g, '');
 }
+
+/**
+ * URLs the user "selected": union of
+ *   - URLs textually present in the selection (a pasted-as-text link),
+ *   - hrefs of anchors whose DOM nodes intersect the selection range
+ *     (the link sits inside the highlighted span — common when
+ *     dragging across a list of download buttons).
+ *
+ * Filtered through `isPublicHttpUrl` so loopback / RFC1918 / non-http
+ * never reach oxdm via the selection path.
+ */
+export function urlsFromSelection(sel: Selection): string[] {
+  const out = new Set<string>();
+  const text = sel.toString();
+  if (text.length >= 4 && text.length <= 50_000) {
+    for (const u of extractUrls(text)) {
+      if (isPublicHttpUrl(u)) out.add(u);
+    }
+  }
+  // Walk every range; for each anchor in the document, include its
+  // href when any range intersects the anchor's node. Cheap because
+  // anchor counts are bounded by page size.
+  const anchors = document.querySelectorAll<HTMLAnchorElement>('a[href]');
+  if (anchors.length) {
+    for (let i = 0; i < sel.rangeCount; i++) {
+      const r = sel.getRangeAt(i);
+      for (const a of anchors) {
+        if (!a.href) continue;
+        if (!r.intersectsNode(a)) continue;
+        if (isPublicHttpUrl(a.href)) out.add(a.href);
+      }
+    }
+  }
+  return [...out];
+}

@@ -1,5 +1,5 @@
 import { startScanner, stop } from '@/src/content/scanner';
-import { extractUrls, isDownloadishUrl } from '@/src/shared/heuristics';
+import { isDownloadishUrl, urlsFromSelection } from '@/src/shared/heuristics';
 import { getSettings, onSettingsChange, type Settings } from '@/src/shared/state';
 
 export default defineContentScript({
@@ -29,7 +29,7 @@ export default defineContentScript({
       const selUrls = (() => {
         const sel = window.getSelection();
         if (!sel || sel.isCollapsed) return 0;
-        return extractUrls(sel.toString()).filter(isDownloadishUrl).length;
+        return urlsFromSelection(sel).length;
       })();
       const pageUrls = (() => {
         const seen = new Set<string>();
@@ -72,8 +72,7 @@ export default defineContentScript({
       if (msg?.kind === 'oxdm-context-selection') {
         const sel = window.getSelection();
         if (!sel) return;
-        const urls = extractUrls(sel.toString());
-        sendOneOrBatch(urls);
+        sendOneOrBatch(urlsFromSelection(sel));
         return;
       }
       if (msg?.kind === 'oxdm-context-page') {

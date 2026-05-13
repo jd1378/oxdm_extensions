@@ -1,7 +1,7 @@
 // In-page scanner. Periodic viewport sweep + hover + selection.
 // Dedupes via WeakSet of elements + Set of URLs for synthetic targets.
 
-import { isDownloadishElement, isDownloadishUrl, extractUrls } from '@/src/shared/heuristics';
+import { isDownloadishElement, urlsFromSelection } from '@/src/shared/heuristics';
 import {
   attachButton,
   removeAllButtons,
@@ -124,14 +124,11 @@ function onSelectionChange() {
 function handleSelection() {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed) {
-    // remove transient selection button
     removeSelectionButton();
     lastSelectionKey = '';
     return;
   }
-  const text = sel.toString();
-  if (text.length < 4 || text.length > 50_000) return;
-  const urls = extractUrls(text).filter(isDownloadishUrl);
+  const urls = urlsFromSelection(sel);
   if (!urls.length) {
     removeSelectionButton();
     lastSelectionKey = '';
