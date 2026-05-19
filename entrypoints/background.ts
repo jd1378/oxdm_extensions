@@ -9,7 +9,6 @@ import { extOf, isPublicHttpUrl } from '@/src/shared/heuristics';
 import type { CaptureRequest, RuntimeMsg } from '@/src/shared/messages';
 
 let settings: Settings;
-const ourCancellations = new Set<number>();
 
 export default defineBackground(() => {
   init();
@@ -108,11 +107,6 @@ function applyAction() {
 
 async function handleRuntimeMsg(msg: RuntimeMsg): Promise<unknown> {
   switch (msg.kind) {
-    case 'get-state':
-      return { settings, connection: client.getState() };
-    case 'set-enabled':
-      await setSettings({ enabled: msg.enabled });
-      return { ok: true };
     case 'capture':
       return client.capture(msg.req);
     case 'batch':
@@ -200,11 +194,9 @@ async function onDownloadCreated(item: any) {
   } catch {}
 
   try {
-    ourCancellations.add(item.id);
     await browser.downloads.cancel(item.id);
     await browser.downloads.erase({ id: item.id });
   } catch {}
-  ourCancellations.delete(item.id);
 
   const cookies = await readCookieHeader(item.url);
   const req: CaptureRequest = {

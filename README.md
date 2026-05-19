@@ -24,12 +24,10 @@ config, three build targets (Chromium MV3, Firefox MV2, Safari MV3).
   hover) still get the button.
 - **Selection triggers** — `selectionchange` extracts URLs from the
   selected text. One URL → opens the oxdm Add Download dialog
-  (`interactive: true`). Multiple URLs → opens the in-extension
-  **mass-select dialog** (`entrypoints/batch`) — table of URLs, per-row
-  HEAD probe via the new `evaluate_url` IPC verb, queue picker via
-  `list_queues`, batched send via `batch_capture`.
-- **Context menus** — "Send link to oxdm", "Send links in selection to
-  oxdm".
+  (`interactive: true`). Multiple URLs → forwarded as a `batch_capture`,
+  oxdm shows its own triage dialog.
+- **Context menu** — single "Download with oxdm" item; title rewrites
+  with the count for link / selection / page contexts.
 - **Skip lists** — by domain / extension / MIME prefix, configurable in
   the Options page.
 
@@ -69,9 +67,9 @@ page.
    the download is cancelled in `chrome://downloads` and the job appears
    in oxdm.
 6. Select text containing multiple URLs (e.g. paste a release page
-   listing). Confirm the *oxdm (N)* button appears below the selection.
-   Click → batch dialog opens, rows populate with filenames/sizes as
-   the HEAD probes return.
+   listing). Confirm the *Download Selected (N)* pill appears below the
+   selection. Click → oxdm receives the batch and opens its triage
+   dialog.
 
 ### Firefox
 
@@ -93,7 +91,6 @@ entrypoints/
   content.ts           # in-page scanner bootstrap
   popup/               # toolbar popup
   options/             # token, port, skip lists
-  batch/               # mass-select dialog (HTML)
 src/
   shared/
     ipc.ts             # reconnecting WS, request/response correlation
@@ -113,7 +110,5 @@ format. The extension sends:
 
 | message         | when                                      |
 |-----------------|-------------------------------------------|
-| `capture`       | single-URL send (intercept, button, ctx)  |
-| `evaluate_url`  | per-row probe in the mass-select dialog   |
-| `list_queues`   | populate the queue picker                 |
-| `batch_capture` | confirmed mass-select submission          |
+| `capture`       | single-URL send (intercept, pin, ctx)     |
+| `batch_capture` | multi-URL selection / page-link send      |

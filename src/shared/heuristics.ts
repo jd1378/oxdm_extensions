@@ -95,58 +95,14 @@ function isPrivateIpv6(h: string): boolean {
   return false;
 }
 
-// Multilingual "download" cue words. Matched as a substring against
-// the element's textContent / aria-label / title / class / id so we
-// catch buttons like 'دانلود با لینک مستقیم' or 'ダウンロード' that
-// don't fit the Latin-only regex.
-const DOWNLOAD_WORDS = [
-  'download', 'get', 'grab', 'save',
-  'télécharger', 'descargar', 'baixar', 'scaricare', 'herunterladen',
-  'скачать', 'pobierz', 'ladda ned', 'lataa', 'last ned',
-  'دانلود', 'تحميل', 'تنزيل',
-  '下载', '下載', 'ダウンロード', '다운로드',
-  'unduh', 'tải xuống', 'מוריד', 'הורד',
-];
-
-function elementHasDownloadCue(el: Element): boolean {
-  const probes: string[] = [];
-  const txt = (el.textContent ?? '').trim();
-  if (txt && txt.length < 80) probes.push(txt);
-  const al = el.getAttribute('aria-label');
-  if (al) probes.push(al);
-  const title = el.getAttribute('title');
-  if (title) probes.push(title);
-  const cls = el.getAttribute('class');
-  if (cls) probes.push(cls);
-  const id = el.getAttribute('id');
-  if (id) probes.push(id);
-  const lower = probes.join(' ').toLowerCase();
-  if (!lower) return false;
-  return DOWNLOAD_WORDS.some((w) => lower.includes(w));
-}
-
+// Pin only on anchors with explicit download semantics: the `download`
+// attribute, a known file extension, or a URL whose path/query reads
+// as a download endpoint. Text/label cues ("Get", "Save", "Download")
+// were too noisy — they fired on navigation links across most sites.
 export function isDownloadishElement(el: Element): boolean {
-  if (el instanceof HTMLAnchorElement) {
-    if (el.hasAttribute('download')) return true;
-    if (el.href && isDownloadishUrl(el.href)) return true;
-  }
-  if (elementHasDownloadCue(el)) {
-    const a = el instanceof HTMLAnchorElement ? el : el.closest('a');
-    if (a && a.href) return true;
-  }
-  // The cue may sit on a wrapping parent (a button whose label is in
-  // a child <span>). Walk up a couple of levels.
-  let parent: Element | null = el.parentElement;
-  let hops = 0;
-  while (parent && hops < 3) {
-    if (elementHasDownloadCue(parent)) {
-      const a = el instanceof HTMLAnchorElement ? el : el.closest('a');
-      if (a && a.href) return true;
-    }
-    parent = parent.parentElement;
-    hops++;
-  }
-  return false;
+  if (!(el instanceof HTMLAnchorElement)) return false;
+  if (el.hasAttribute('download')) return true;
+  return !!el.href && isDownloadishUrl(el.href);
 }
 
 // URL extraction from arbitrary text — selection drop, clipboard, etc.

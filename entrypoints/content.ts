@@ -84,10 +84,11 @@ export default defineContentScript({
         return;
       }
       if (msg?.kind === 'oxdm-context-page') {
-        const urls = Array.from(document.querySelectorAll('a[href]'))
-          .map((a) => (a as HTMLAnchorElement).href)
-          .filter((u, i, arr) => isDownloadishUrl(u) && arr.indexOf(u) === i);
-        sendOneOrBatch(urls);
+        const seen = new Set<string>();
+        for (const a of document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+          if (isDownloadishUrl(a.href)) seen.add(a.href);
+        }
+        sendOneOrBatch([...seen]);
         return;
       }
     });

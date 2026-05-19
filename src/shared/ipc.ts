@@ -262,8 +262,8 @@ export class OxdmClient {
     }
   }
 
-  private send(req: OutboundRequest, id?: string): Promise<Response> {
-    const correlationId = id ?? `r${this.nextId++}`;
+  private send(req: OutboundRequest): Promise<Response> {
+    const correlationId = `r${this.nextId++}`;
     (req as any).id = correlationId;
     const payload = JSON.stringify(req);
     return new Promise<Response>((resolve) => {
@@ -288,7 +288,7 @@ export class OxdmClient {
     // oxdm always opens the triage dialog for batches now; the
     // `interactive` field is server-ignored. Kept out of the wire to
     // shrink the shape.
-    return this.send({ kind: 'batch_capture', id: '', items });
+    return this.send({ kind: 'batch_capture', items });
   }
 }
 

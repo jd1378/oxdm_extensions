@@ -21,7 +21,8 @@ export interface CaptureRequest {
 
 export interface BatchCaptureRequest {
   kind: 'batch_capture';
-  id: string;
+  /** Correlation id; injected by the client. */
+  id?: string;
   /** Default queue for items that don't carry their own. */
   queue?: string;
   /** Default queue name (case-insensitive). Ignored when `queue` is set. */
@@ -42,8 +43,6 @@ export type Response =
 // --- Internal extension-side messages (runtime.sendMessage) ---
 
 export type RuntimeMsg =
-  | { kind: 'get-state' }
-  | { kind: 'set-enabled'; enabled: boolean }
   | { kind: 'capture'; req: CaptureRequest }
   | { kind: 'batch'; items: CaptureRequest[] }
   | { kind: 'connection-status' }

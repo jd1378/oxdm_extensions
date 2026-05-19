@@ -91,6 +91,7 @@ const css = `
   padding: 10px 16px 10px 12px;
   cursor: pointer;
 }
+.btn .body, .pin .body { transition: background-color .12s ease; }
 .btn .body:hover, .pin .body:hover { background: #2563eb; }
 .btn img, .pin img { width: 22px; height: 22px; display: block; border-radius: 50%; }
 .x {
@@ -101,8 +102,10 @@ const css = `
   color: rgba(255,255,255,.85);
   cursor: pointer;
   font: 700 18px/1 system-ui, sans-serif;
+  transition: background-color .12s ease, color .12s ease;
 }
-.x:hover { background: rgba(255,255,255,.22); color: #fff; }
+.x:hover, .x:focus { background: #dc2626; color: #fff; }
+.x:active { background: #b91c1c; }
 `;
 
 // ─── Pin (hover-anchored) ─────────────────────────────────────────

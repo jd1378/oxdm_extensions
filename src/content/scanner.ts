@@ -17,15 +17,12 @@ import {
   stopPinHoverTracking,
 } from './injector';
 
-type StopFn = () => void;
-
 interface ScannerHandle {
-  stop: StopFn;
+  stop: () => void;
 }
 
 const seenElements = new WeakSet<Element>();
 let intervalHandle: number | null = null;
-let observerHandle: MutationObserver | null = null;
 let active = false;
 
 export function startScanner(intervalMs: number): ScannerHandle {
@@ -57,15 +54,6 @@ export function startScanner(intervalMs: number): ScannerHandle {
     window.addEventListener('load', onLoad, { once: true });
   }
 
-  observerHandle = new MutationObserver(() => {
-    // No-op: rely on the periodic loop. A future optimization could
-    // re-run only on subtree additions intersecting the cursor.
-  });
-  observerHandle.observe(document.documentElement, {
-    subtree: true,
-    childList: true,
-  });
-
   return { stop };
 }
 
@@ -74,8 +62,15 @@ export function stop() {
   active = false;
   if (intervalHandle != null) clearInterval(intervalHandle);
   intervalHandle = null;
-  observerHandle?.disconnect();
-  observerHandle = null;
+  if (hoverTimer != null) {
+    clearTimeout(hoverTimer);
+    hoverTimer = null;
+  }
+  if (selectionTimer != null) {
+    clearTimeout(selectionTimer);
+    selectionTimer = null;
+  }
+  lastSelectionKey = '';
   document.removeEventListener('mouseover', onMouseOver);
   document.removeEventListener('selectionchange', onSelectionChange);
   stopPinHoverTracking();

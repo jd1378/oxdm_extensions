@@ -23,16 +23,10 @@ export default defineConfig({
     // know the chrome-extension origin ourselves.
     web_accessible_resources:
       browser === 'firefox'
-        ? (['icon-16.png', 'icon-32.png', 'icon-48.png', 'icon-96.png', 'icon-128.png'] as any)
+        ? (['icon-32.png'] as any)
         : ([
             {
-              resources: [
-                'icon-16.png',
-                'icon-32.png',
-                'icon-48.png',
-                'icon-96.png',
-                'icon-128.png',
-              ],
+              resources: ['icon-32.png'],
               matches: ['<all_urls>'],
             },
           ] as any),
