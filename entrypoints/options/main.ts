@@ -61,6 +61,12 @@ function render() {
             </div>
           </section>
 
+        </section>
+
+        <section data-panel="detection" class="panel">
+          <h1 class="title">Detection</h1>
+          <p class="subtitle">In-page affordances near download-ish links.</p>
+
           <section class="card">
             <h2>Capture rules</h2>
             <p class="hint">
@@ -68,11 +74,6 @@ function render() {
               <em>oxdm → Settings → Browser integration</em>. The extension fetches them on connect.
             </p>
           </section>
-        </section>
-
-        <section data-panel="detection" class="panel">
-          <h1 class="title">Detection</h1>
-          <p class="subtitle">In-page affordances near download-ish links.</p>
 
           <section class="card">
             <h2>Pinned button</h2>
@@ -135,6 +136,9 @@ function render() {
 
   set('transport', settings.transport);
   set('pairingCode', settings.pairingCode);
+  syncPairingDisabled();
+  const transportEl = document.getElementById('transport') as HTMLSelectElement;
+  transportEl.addEventListener('change', syncPairingDisabled);
   (document.getElementById('injectButton') as HTMLInputElement).checked = settings.injectButton;
 
   for (const a of app.querySelectorAll<HTMLAnchorElement>('.nav a')) {
@@ -204,9 +208,10 @@ function renderLogs(logs: LogEntry[]) {
     const e = logs[i];
     const ts = new Date(e.ts).toLocaleTimeString();
     const cls = `logs-row logs-${e.level}`;
+    const count = e.count && e.count > 1 ? ` ×${e.count}` : '';
     rows.push(
       `<div class="${cls}"><span class="logs-ts">${ts}</span>` +
-        `<span class="logs-src">${escapeHtml(e.source)}</span>` +
+        `<span class="logs-src">${escapeHtml(e.source)}${count}</span>` +
         `<span class="logs-msg">${escapeHtml(e.message)}</span></div>`,
     );
   }
@@ -234,7 +239,8 @@ async function refreshConnection() {
     dot.className = 'dot';
     if (s === 'connected') dot.classList.add('ok');
     else if (s === 'connecting' || s === 'reconnecting') dot.classList.add('warn');
-    else if (s === 'error') dot.classList.add('err');
+    else if (s === 'error' || s === 'token-rejected') dot.classList.add('err');
+    if (s === 'token-rejected') text.textContent = 'token rejected';
   } catch {}
 }
 
@@ -251,13 +257,35 @@ function get(id: string): string {
 
 async function save() {
   const transport = get('transport') as Settings['transport'];
+  const resolved = ['auto', 'native', 'ws'].includes(transport)
+    ? transport
+    : 'auto';
   const patch: Partial<Settings> = {
-    transport: ['auto', 'native', 'ws'].includes(transport) ? transport : 'auto',
+    transport: resolved,
+    // Save = user-initiated. Any auto-pin from a previous session
+    // no longer applies; explicit choices are remembered as such.
+    transportPinnedByAuto: false,
     pairingCode: get('pairingCode').trim(),
     injectButton: (document.getElementById('injectButton') as HTMLInputElement).checked,
   };
   await setSettings(patch);
   flashSaved();
+}
+
+function syncPairingDisabled() {
+  const t = (document.getElementById('transport') as HTMLSelectElement)?.value;
+  const input = document.getElementById('pairingCode') as HTMLInputElement | null;
+  if (!input) return;
+  // Only the direct WebSocket transport uses the pairing code; the
+  // shim discovers port + token from oxdm.db, and 'auto' tries
+  // native first. Keep the field active in 'ws' mode and disabled
+  // otherwise so users don't think pasting a code here changes how
+  // the other transports behave.
+  const disabled = t !== 'ws';
+  input.disabled = disabled;
+  input.placeholder = disabled
+    ? 'Only used with WebSocket transport'
+    : 'oxdm1.…';
 }
 
 function flashSaved() {

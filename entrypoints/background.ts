@@ -31,41 +31,50 @@ async function init() {
     settings = s;
     applyAction();
     applyClientConfig(s);
-    if (s.enabled && !wasEnabled) client.ensureOpen();
-    else if (!s.enabled && wasEnabled) client.stop();
+    if (!s.enabled && wasEnabled) {
+      client.stop();
+    } else if (s.enabled) {
+      // Always kick the client: configure() may have torn down a
+      // live session, and a fresh token should retry an existing
+      // token-rejected / wsTokenBlocked latch.
+      client.ensureOpen();
+    }
   });
 
   let lastSyncedState = '';
+  // Whether the current session ever reached 'connected' — i.e. auth
+  // verified, not just transport open. Reset on every disconnect.
+  let reachedConnected = false;
   client.onError((e) => {
     void pushLog(
       'error',
       e.transport ? `ipc/${e.transport}` : 'ipc',
       e.message,
     );
-    // Token rejection while pinned to ws means the saved pairing
-    // code no longer works. Revert to auto so a working native host
-    // (if installed) can take over without the user having to touch
-    // the Options page.
+    // Revert a stuck pin: only when we set the pin ourselves (from
+    // an earlier auto-resolve) AND it failed before verification.
+    // Explicit user choices are respected — keep failing visibly so
+    // the user can fix the underlying problem.
     if (
-      e.transport === 'ws' &&
-      settings.transport === 'ws' &&
-      /token rejected/i.test(e.message)
+      !reachedConnected &&
+      e.transport &&
+      settings.transport === e.transport &&
+      settings.transportPinnedByAuto
     ) {
       void pushLog(
         'info',
         'ipc',
-        'reverting transport to "auto" after token rejection',
+        `reverting transport to "auto" — pinned "${e.transport}" failed before verification`,
       );
-      void setSettings({ transport: 'auto' });
+      void setSettings({ transport: 'auto', transportPinnedByAuto: false });
     }
   });
   client.onState((cs) => {
     if (cs === 'connected' && lastSyncedState !== 'connected') {
+      reachedConnected = true;
       void pushLog('info', 'ipc', 'connected to oxdm');
-      // Learn what auto resolved to and persist it. Skips the native
-      // probe on subsequent startups (faster, fewer log lines, no
-      // spurious "native host unreachable" entries on machines where
-      // only WS was ever going to work).
+      // Learn what auto resolved to and persist it. Skips the
+      // wasteful probe on subsequent startups.
       const active = client.getActiveTransport();
       if (settings.transport === 'auto' && active) {
         void pushLog(
@@ -73,9 +82,12 @@ async function init() {
           'ipc',
           `pinning transport to "${active}" (auto resolved to it)`,
         );
-        void setSettings({ transport: active });
+        void setSettings({ transport: active, transportPinnedByAuto: true });
       }
       void syncRules();
+    }
+    if (cs === 'disconnected' || cs === 'error') {
+      reachedConnected = false;
     }
     lastSyncedState = cs;
     browser.action.setTitle({
@@ -133,7 +145,18 @@ async function init() {
   );
 }
 
+let lastConfiguredToken: string | null = null;
 function applyClientConfig(s: Settings) {
+  if (lastConfiguredToken !== null && lastConfiguredToken !== s.token) {
+    void pushLog(
+      'info',
+      'settings',
+      s.token
+        ? `token updated (${s.token.length} chars)`
+        : 'token cleared',
+    );
+  }
+  lastConfiguredToken = s.token;
   client.configure({
     port: s.port,
     token: s.token,
@@ -141,12 +164,21 @@ function applyClientConfig(s: Settings) {
   });
 }
 
+let warnedAboutRulesMiss = false;
 async function syncRules() {
   const wire = await client.getRules();
   if (!wire) {
-    await pushLog('warn', 'rules', 'oxdm did not return capture rules; using last cache');
+    if (!warnedAboutRulesMiss) {
+      warnedAboutRulesMiss = true;
+      await pushLog(
+        'warn',
+        'rules',
+        'oxdm did not return capture rules — your oxdm build may be older than this extension; using cached rules',
+      );
+    }
     return;
   }
+  warnedAboutRulesMiss = false;
   const next: CaptureRules = {
     minSize: wire.min_size ?? 0,
     skipDomains: wire.skip_domains ?? [],

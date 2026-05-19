@@ -16,10 +16,11 @@ function statusLine(): { text: string; cls: string } {
   if (!settings.enabled) return { text: 'disabled', cls: 'warn' };
   switch (connState) {
     case 'connected':       return { text: 'connected',     cls: 'ok' };
-    case 'connecting':   return { text: 'connecting…',   cls: 'warn' };
-    case 'reconnecting': return { text: 'reconnecting…', cls: 'warn' };
-    case 'error':        return { text: 'error',         cls: 'err' };
-    default:             return { text: 'not connected', cls: 'err' };
+    case 'connecting':      return { text: 'connecting…',   cls: 'warn' };
+    case 'reconnecting':    return { text: 'reconnecting…', cls: 'warn' };
+    case 'token-rejected':  return { text: 'token rejected', cls: 'err' };
+    case 'error':           return { text: 'error',         cls: 'err' };
+    default:                return { text: 'not connected', cls: 'err' };
   }
 }
 

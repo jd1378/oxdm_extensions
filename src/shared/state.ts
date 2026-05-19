@@ -24,6 +24,15 @@ export interface Settings {
   port: number;
   token: string;
   injectButton: boolean;
+  /**
+   * True when the current `transport` value came from the auto-pin
+   * codepath (we observed which transport `auto` resolved to and
+   * wrote it back). Cleared whenever the user explicitly changes
+   * transport via the Options page. Auto-revert only acts on
+   * transport values pinned by auto — explicit user choices are
+   * respected even when they keep failing.
+   */
+  transportPinnedByAuto: boolean;
 }
 
 /**
@@ -40,6 +49,7 @@ export const DEFAULTS: Settings = {
   port: 27812,
   token: '',
   injectButton: true,
+  transportPinnedByAuto: false,
 };
 
 const KEY = 'oxdm:settings';
@@ -55,11 +65,19 @@ export async function setSettings(patch: Partial<Settings>): Promise<Settings> {
   const next = { ...cur, ...patch };
   // Whenever the pairing code changes, decode it into the legacy
   // port + token fields so the rest of the codebase keeps working.
+  // Clearing the field also resets port + token so the input field
+  // remains the single source of truth — otherwise a stale token
+  // from a previous pairing would silently keep the WS authenticated.
   if (patch.pairingCode !== undefined) {
-    const decoded = decodePairingCode(patch.pairingCode);
-    if (decoded) {
-      next.port = decoded.port;
-      next.token = decoded.token;
+    if (!patch.pairingCode) {
+      next.port = DEFAULTS.port;
+      next.token = '';
+    } else {
+      const decoded = decodePairingCode(patch.pairingCode);
+      if (decoded) {
+        next.port = decoded.port;
+        next.token = decoded.token;
+      }
     }
   }
   await browser.storage.local.set({ [KEY]: next });

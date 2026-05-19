@@ -8,12 +8,14 @@
 export type LogLevel = 'info' | 'warn' | 'error';
 
 export interface LogEntry {
-  /** Unix ms. */
+  /** Unix ms — refreshed on each dedupe hit. */
   ts: number;
   level: LogLevel;
   /** Short tag identifying the subsystem (e.g. `ipc`, `capture`). */
   source: string;
   message: string;
+  /** Repeat count when the same (level/source/message) recurs back-to-back. */
+  count?: number;
 }
 
 const KEY = 'oxdm:logs';
@@ -27,7 +29,23 @@ export async function pushLog(
   try {
     const got = await browser.storage.local.get(KEY);
     const cur = (got[KEY] as LogEntry[] | undefined) ?? [];
-    cur.push({ ts: Date.now(), level, source, message });
+    // Dedupe consecutive identical entries (retry loops would
+    // otherwise spam the panel with one row per backoff tick).
+    // The latest occurrence keeps its timestamp so the user can
+    // still see "last seen at" without scrolling.
+    const last = cur[cur.length - 1];
+    if (
+      last &&
+      last.level === level &&
+      last.source === source &&
+      last.message === message
+    ) {
+      last.ts = Date.now();
+      (last as LogEntry & { count?: number }).count =
+        ((last as LogEntry & { count?: number }).count ?? 1) + 1;
+    } else {
+      cur.push({ ts: Date.now(), level, source, message });
+    }
     while (cur.length > CAP) cur.shift();
     await browser.storage.local.set({ [KEY]: cur });
   } catch {
