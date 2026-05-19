@@ -28,8 +28,10 @@ config, three build targets (Chromium MV3, Firefox MV2, Safari MV3).
   oxdm shows its own triage dialog.
 - **Context menu** — single "Download with oxdm" item; title rewrites
   with the count for link / selection / page contexts.
-- **Skip lists** — by domain / extension / MIME prefix, configurable in
-  the Options page.
+- **Capture rules** — file types, MIME filters, size threshold, and
+  per-domain skips live in oxdm (Settings → Browser integration). The
+  extension fetches them via `get_capture_rules` on connect and caches
+  the result; oxdm is the single source of truth.
 
 ## Build
 
@@ -90,7 +92,7 @@ entrypoints/
   background.ts        # WS client, download intercept, message router
   content.ts           # in-page scanner bootstrap
   popup/               # toolbar popup
-  options/             # token, port, skip lists
+  options/             # pairing code, transport, UX toggles
 src/
   shared/
     ipc.ts             # reconnecting WS, request/response correlation

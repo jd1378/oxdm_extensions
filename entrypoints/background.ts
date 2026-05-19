@@ -1,14 +1,18 @@
 import { client } from '@/src/shared/ipc';
 import {
+  getCachedRules,
   getSettings,
   onSettingsChange,
+  setCachedRules,
   setSettings,
+  type CaptureRules,
   type Settings,
 } from '@/src/shared/state';
 import { extOf, isPublicHttpUrl } from '@/src/shared/heuristics';
 import type { CaptureRequest, RuntimeMsg } from '@/src/shared/messages';
 
 let settings: Settings;
+let rules: CaptureRules;
 
 export default defineBackground(() => {
   init();
@@ -16,6 +20,7 @@ export default defineBackground(() => {
 
 async function init() {
   settings = await getSettings();
+  rules = await getCachedRules();
   applyAction();
   applyClientConfig(settings);
   if (settings.enabled) client.ensureOpen();
@@ -29,7 +34,12 @@ async function init() {
     else if (!s.enabled && wasEnabled) client.stop();
   });
 
+  let lastSyncedState = '';
   client.onState((cs) => {
+    if (cs === 'authed' && lastSyncedState !== 'authed') {
+      void syncRules();
+    }
+    lastSyncedState = cs;
     browser.action.setTitle({
       title: `oxdm — ${settings.enabled ? 'on' : 'off'} (${cs})`,
     });
@@ -89,9 +99,27 @@ function applyClientConfig(s: Settings) {
   client.configure({
     port: s.port,
     token: s.token,
-    hostName: s.nativeHostName,
     transport: s.transport,
   });
+}
+
+async function syncRules() {
+  const wire = await client.getRules();
+  if (!wire) return;
+  const next: CaptureRules = {
+    minSize: wire.min_size ?? 0,
+    skipDomains: wire.skip_domains ?? [],
+    skipExtensions: (wire.skip_extensions ?? []).map((s) =>
+      s.toLowerCase().replace(/^\./, ''),
+    ),
+    skipMimePrefixes: (wire.skip_mime_prefixes ?? []).map((s) => s.toLowerCase()),
+    allowExtensions: (wire.allow_extensions ?? []).map((s) =>
+      s.toLowerCase().replace(/^\./, ''),
+    ),
+    allowMimePrefixes: (wire.allow_mime_prefixes ?? []).map((s) => s.toLowerCase()),
+  };
+  rules = next;
+  await setCachedRules(next);
 }
 
 function applyAction() {
@@ -183,14 +211,23 @@ async function readCookieHeader(url: string): Promise<string | undefined> {
 async function onDownloadCreated(item: any) {
   if (!settings.enabled) return;
   if (!item.url || !isPublicHttpUrl(item.url)) return;
-  if (settings.minSize > 0 && item.fileSize > 0 && item.fileSize < settings.minSize) return;
-  const mime = item.mime ?? '';
-  if (settings.skipMimePrefixes.some((p) => mime.startsWith(p))) return;
+  if (rules.minSize > 0 && item.fileSize > 0 && item.fileSize < rules.minSize) return;
+  const mime = (item.mime ?? '').toLowerCase();
+  if (rules.skipMimePrefixes.some((p) => mime.startsWith(p))) return;
   const ext = extOf(item.url) ?? extOf(item.filename ?? '');
-  if (ext && settings.skipExtensions.includes(ext)) return;
+  if (ext && rules.skipExtensions.includes(ext)) return;
+  // Allow lists are subtractive after skips: when non-empty, require a
+  // positive match. Either dimension alone is sufficient.
+  const hasAllow =
+    rules.allowExtensions.length > 0 || rules.allowMimePrefixes.length > 0;
+  if (hasAllow) {
+    const extOk = !!ext && rules.allowExtensions.includes(ext);
+    const mimeOk = !!mime && rules.allowMimePrefixes.some((p) => mime.startsWith(p));
+    if (!extOk && !mimeOk) return;
+  }
   try {
     const host = new URL(item.url).hostname;
-    if (settings.skipDomains.some((d) => host === d || host.endsWith('.' + d))) return;
+    if (rules.skipDomains.some((d) => host === d || host.endsWith('.' + d))) return;
   } catch {}
 
   try {

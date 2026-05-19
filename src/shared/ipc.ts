@@ -13,8 +13,13 @@
 // Wire format is identical on both paths: tagged JSON requests with an
 // `id` correlation field; replies carry the same `id`.
 
-import type { OutboundRequest, Response, CaptureRequest } from './messages';
-import type { Transport } from './state';
+import type {
+  OutboundRequest,
+  Response,
+  CaptureRequest,
+  CaptureRulesWire,
+} from './messages';
+import { NATIVE_HOST_NAME, type Transport } from './state';
 
 type Pending = (r: Response) => void;
 
@@ -35,7 +40,6 @@ export class OxdmClient {
   private backoffMs = 1000;
   private port = 27812;
   private token = '';
-  private hostName = 'io.github.jd1378.oxdm.host';
   private transportPref: Transport = 'auto';
   private listeners = new Set<(s: ConnState) => void>();
   private autoFellBackToWs = false;
@@ -46,17 +50,14 @@ export class OxdmClient {
   configure(opts: {
     port: number;
     token: string;
-    hostName: string;
     transport: Transport;
   }) {
     const changed =
       opts.port !== this.port ||
       opts.token !== this.token ||
-      opts.hostName !== this.hostName ||
       opts.transport !== this.transportPref;
     this.port = opts.port;
     this.token = opts.token;
-    this.hostName = opts.hostName;
     this.transportPref = opts.transport;
     if (changed) {
       this.autoFellBackToWs = false;
@@ -126,7 +127,7 @@ export class OxdmClient {
     }
     let port: any;
     try {
-      port = browser.runtime.connectNative(this.hostName);
+      port = browser.runtime.connectNative(NATIVE_HOST_NAME);
     } catch {
       this.autoFellBackToWs = this.transportPref === 'auto';
       return false;
@@ -282,6 +283,12 @@ export class OxdmClient {
 
   async capture(req: CaptureRequest): Promise<Response> {
     return this.send({ kind: 'capture', ...req });
+  }
+
+  async getRules(): Promise<CaptureRulesWire | null> {
+    const r = await this.send({ kind: 'get_capture_rules' });
+    if (r.result === 'capture_rules') return r.rules;
+    return null;
   }
 
   async batch(items: CaptureRequest[]): Promise<Response> {

@@ -41,20 +41,13 @@ function render() {
           <section class="card">
             <h2>Transport</h2>
             <p class="hint">Native skips the pairing code — host self-discovers from <span class="kbd">oxdm.db</span>.</p>
-            <div class="row cols-2">
-              <div class="field">
-                <label for="transport">Mode</label>
-                <select id="transport">
-                  <option value="auto">Auto — native first, fallback to WebSocket</option>
-                  <option value="native">Native messaging only</option>
-                  <option value="ws">WebSocket only</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="nativeHostName">Native host name</label>
-                <input type="text" id="nativeHostName" />
-                <div class="help">Must match the installed manifest's <span class="kbd">name</span>.</div>
-              </div>
+            <div class="field">
+              <label for="transport">Mode</label>
+              <select id="transport">
+                <option value="auto">Auto — native first, fallback to WebSocket</option>
+                <option value="native">Native messaging only</option>
+                <option value="ws">WebSocket only</option>
+              </select>
             </div>
             <div class="field" style="margin-top:var(--space-4)">
               <label for="pairingCode">Pairing code (WebSocket transport)</label>
@@ -62,46 +55,26 @@ function render() {
               <div class="help">From <em>oxdm → Settings → Browser integration → Pairing code</em>. Bundles port + token.</div>
             </div>
           </section>
+
+          <section class="card">
+            <h2>Capture rules</h2>
+            <p class="hint">
+              File types, MIME filters, size threshold, and per-domain skips are set in
+              <em>oxdm → Settings → Browser integration</em>. The extension fetches them on connect.
+            </p>
+          </section>
         </section>
 
         <section data-panel="capture" class="panel">
           <h1 class="title">Capture</h1>
-          <p class="subtitle">Filters for browser downloads the extension forwards to oxdm.</p>
+          <p class="subtitle">How the extension scans pages for download links.</p>
 
           <section class="card">
-            <h2>Thresholds</h2>
-            <div class="row cols-2">
-              <div class="field">
-                <label for="minSize">Minimum size (bytes)</label>
-                <input type="number" id="minSize" min="0" />
-                <div class="help">0 disables the size threshold.</div>
-              </div>
-              <div class="field">
-                <label for="scanIntervalMs">Scan interval (ms)</label>
-                <input type="number" id="scanIntervalMs" min="500" />
-                <div class="help">How often the content script re-walks the DOM.</div>
-              </div>
-            </div>
-          </section>
-
-          <section class="card">
-            <h2>Skip lists</h2>
-            <p class="hint">Matched downloads stay with the browser.</p>
+            <h2>Scanning</h2>
             <div class="field">
-              <label for="skipDomains">Domains</label>
-              <textarea id="skipDomains" placeholder="one host per line, e.g.&#10;internal.example.com"></textarea>
-            </div>
-            <div class="row cols-2" style="margin-top:var(--space-4)">
-              <div class="field">
-                <label for="skipExtensions">File extensions</label>
-                <input type="text" id="skipExtensions" placeholder="html, htm, php" />
-                <div class="help">Comma-separated, no dot.</div>
-              </div>
-              <div class="field">
-                <label for="skipMimePrefixes">MIME prefixes</label>
-                <input type="text" id="skipMimePrefixes" placeholder="text/html, application/xhtml" />
-                <div class="help">Comma-separated.</div>
-              </div>
+              <label for="scanIntervalMs">Scan interval (ms)</label>
+              <input type="number" id="scanIntervalMs" min="500" />
+              <div class="help">How often the content script re-walks the DOM.</div>
             </div>
           </section>
         </section>
@@ -115,7 +88,7 @@ function render() {
             <div class="toggle-row">
               <label for="injectButton">
                 Show the oxdm pin next to download links
-                <div class="help">Disable to keep the page chrome-free; right-click context menu still works.</div>
+                <div class="help">Turn off to hide the inline button; the right-click menu still works.</div>
               </label>
               <input type="checkbox" id="injectButton" class="switch" />
             </div>
@@ -129,7 +102,6 @@ function render() {
             <h2>Project</h2>
             <p class="hint">
               Source: <a href="https://github.com/jd1378/oxdm_extensions" target="_blank">github.com/jd1378/oxdm_extensions</a>.
-              Native messaging manifest: <span class="kbd">io.github.jd1378.oxdm.host</span>.
             </p>
           </section>
         </section>
@@ -146,14 +118,9 @@ function render() {
   (app.querySelector('.brand img') as HTMLImageElement).src = iconUrl;
 
   set('transport', settings.transport);
-  set('nativeHostName', settings.nativeHostName);
   set('pairingCode', settings.pairingCode);
-  set('minSize', settings.minSize);
   set('scanIntervalMs', settings.scanIntervalMs);
   (document.getElementById('injectButton') as HTMLInputElement).checked = settings.injectButton;
-  set('skipDomains', settings.skipDomains.join('\n'));
-  set('skipExtensions', settings.skipExtensions.join(', '));
-  set('skipMimePrefixes', settings.skipMimePrefixes.join(', '));
 
   for (const a of app.querySelectorAll<HTMLAnchorElement>('.nav a')) {
     a.addEventListener('click', (ev) => {
@@ -218,23 +185,12 @@ async function save() {
   const transport = get('transport') as Settings['transport'];
   const patch: Partial<Settings> = {
     transport: ['auto', 'native', 'ws'].includes(transport) ? transport : 'auto',
-    nativeHostName: get('nativeHostName').trim() || DEFAULTS.nativeHostName,
     pairingCode: get('pairingCode').trim(),
-    minSize: Math.max(0, +get('minSize') || 0),
     scanIntervalMs: Math.max(500, +get('scanIntervalMs') || DEFAULTS.scanIntervalMs),
     injectButton: (document.getElementById('injectButton') as HTMLInputElement).checked,
-    skipDomains: parseList(get('skipDomains'), /\s+/),
-    skipExtensions: parseList(get('skipExtensions'), /,/).map((s) =>
-      s.toLowerCase().replace(/^\./, ''),
-    ),
-    skipMimePrefixes: parseList(get('skipMimePrefixes'), /,/).map((s) => s.toLowerCase()),
   };
   await setSettings(patch);
   flashSaved();
-}
-
-function parseList(text: string, sep: RegExp): string[] {
-  return text.split(sep).map((s) => s.trim()).filter(Boolean);
 }
 
 function flashSaved() {

@@ -4,12 +4,15 @@ import { decodePairingCode } from './pairing';
 
 export type Transport = 'auto' | 'native' | 'ws';
 
+/**
+ * UX-only settings owned by the extension. Capture filters (min size,
+ * skip lists, allow lists) are owned by oxdm and fetched at connect
+ * time — see `CachedRules` below.
+ */
 export interface Settings {
   enabled: boolean;
   /** Transport selection. 'auto' tries native first then falls back to WS. */
   transport: Transport;
-  /** Native-messaging host id. Must match the installed manifest's `name`. */
-  nativeHostName: string;
   /**
    * Single copy-pasteable pairing code from oxdm Settings → Browser
    * integration. Format: `oxdm1.<base64url>` bundling the IPC port +
@@ -20,25 +23,23 @@ export interface Settings {
   pairingCode: string;
   port: number;
   token: string;
-  minSize: number; // bytes; below this, browser handles it
-  skipDomains: string[];
-  skipExtensions: string[]; // lower-case, no dot
-  skipMimePrefixes: string[]; // e.g. "text/html"
   injectButton: boolean;
   scanIntervalMs: number;
 }
 
+/**
+ * Fixed, hardcoded native-messaging host id. Must match the installed
+ * manifest's `name`. Not user-tunable: rebranding the host id would
+ * require reinstalling the manifest anyway, so a setting is dead UI.
+ */
+export const NATIVE_HOST_NAME = 'io.github.jd1378.oxdm.host';
+
 export const DEFAULTS: Settings = {
   enabled: true,
   transport: 'auto',
-  nativeHostName: 'io.github.jd1378.oxdm.host',
   pairingCode: '',
   port: 27812,
   token: '',
-  minSize: 0,
-  skipDomains: [],
-  skipExtensions: ['html', 'htm', 'php', 'asp', 'aspx', 'jsp'],
-  skipMimePrefixes: ['text/html', 'application/xhtml'],
   injectButton: true,
   scanIntervalMs: 5000,
 };
@@ -74,4 +75,43 @@ export function onSettingsChange(cb: (s: Settings) => void) {
     const next = { ...DEFAULTS, ...(changes[KEY].newValue ?? {}) };
     cb(next as Settings);
   });
+}
+
+// ── Capture rules, owned by oxdm ──────────────────────────────────────
+// Fetched via `get_capture_rules` on connect, cached so the extension
+// keeps working when oxdm briefly disconnects. The cache is rules-only
+// (no user-facing UI); editing happens in oxdm.
+
+export interface CaptureRules {
+  minSize: number;
+  skipDomains: string[];
+  skipExtensions: string[];
+  skipMimePrefixes: string[];
+  allowExtensions: string[];
+  allowMimePrefixes: string[];
+}
+
+// Conservative baked default: behaves like the pre-sync extension did
+// (skip page-shaped URLs, no allowlist, no size threshold). Used only
+// until the first successful sync from oxdm.
+export const FALLBACK_RULES: CaptureRules = {
+  minSize: 0,
+  skipDomains: [],
+  skipExtensions: ['html', 'htm', 'php', 'asp', 'aspx', 'jsp'],
+  skipMimePrefixes: ['text/html', 'application/xhtml'],
+  allowExtensions: [],
+  allowMimePrefixes: [],
+};
+
+const RULES_KEY = 'oxdm:rules';
+
+export async function getCachedRules(): Promise<CaptureRules> {
+  const got = await browser.storage.local.get(RULES_KEY);
+  const stored = got[RULES_KEY] as Partial<CaptureRules> | undefined;
+  if (!stored) return FALLBACK_RULES;
+  return { ...FALLBACK_RULES, ...stored };
+}
+
+export async function setCachedRules(r: CaptureRules): Promise<void> {
+  await browser.storage.local.set({ [RULES_KEY]: r });
 }

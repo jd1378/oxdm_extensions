@@ -19,6 +19,20 @@ export interface CaptureRequest {
   auto_start_queue?: boolean;
 }
 
+export interface GetCaptureRulesRequest {
+  kind: 'get_capture_rules';
+  id?: string;
+}
+
+export interface CaptureRulesWire {
+  min_size?: number;
+  skip_domains?: string[];
+  skip_extensions?: string[];
+  skip_mime_prefixes?: string[];
+  allow_extensions?: string[];
+  allow_mime_prefixes?: string[];
+}
+
 export interface BatchCaptureRequest {
   kind: 'batch_capture';
   /** Correlation id; injected by the client. */
@@ -34,11 +48,13 @@ export interface BatchCaptureRequest {
 
 export type OutboundRequest =
   | ({ kind?: 'capture' } & CaptureRequest)
-  | BatchCaptureRequest;
+  | BatchCaptureRequest
+  | GetCaptureRulesRequest;
 
 export type Response =
   | { result: 'accepted'; job_id: string; id?: string }
-  | { result: 'rejected'; reason: string; id?: string };
+  | { result: 'rejected'; reason: string; id?: string }
+  | { result: 'capture_rules'; id?: string; rules: CaptureRulesWire };
 
 // --- Internal extension-side messages (runtime.sendMessage) ---
 
