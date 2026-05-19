@@ -79,7 +79,7 @@ const css = `
   background: #1f2937;
   color: #f9fafb;
   font: 600 14px/1.1 system-ui, -apple-system, Segoe UI, sans-serif;
-  border-radius: 12px;
+  border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0,0,0,.5);
   pointer-events: auto;
   user-select: none;
@@ -93,7 +93,7 @@ const css = `
 }
 .btn .body, .pin .body { transition: background-color .12s ease; }
 .btn .body:hover, .pin .body:hover { background: #2563eb; }
-.btn img, .pin img { width: 22px; height: 22px; display: block; border-radius: 50%; }
+.btn img, .pin img { width: 22px; height: 22px; display: block; }
 .x {
   display: inline-flex; align-items: center; justify-content: center;
   width: 38px;
@@ -104,8 +104,8 @@ const css = `
   font: 700 18px/1 system-ui, sans-serif;
   transition: background-color .12s ease, color .12s ease;
 }
-.x:hover, .x:focus { background: #dc2626; color: #fff; }
-.x:active { background: #b91c1c; }
+.x:hover, .x:focus { background: rgba(255,255,255,.14); color: #fff; }
+.x:active { background: rgba(255,255,255,.22); }
 `;
 
 // ─── Pin (hover-anchored) ─────────────────────────────────────────
