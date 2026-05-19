@@ -23,7 +23,19 @@ import { NATIVE_HOST_NAME, type Transport } from './state';
 
 type Pending = (r: Response) => void;
 
-export type ConnState = 'disconnected' | 'connecting' | 'authed' | 'error';
+export type ConnState =
+  | 'disconnected'
+  | 'connecting'
+  | 'reconnecting'
+  | 'connected'
+  | 'error';
+
+export interface ConnError {
+  /** Transport in use when the error fired, or null if undetermined. */
+  transport: 'native' | 'ws' | null;
+  /** Short, human-readable. */
+  message: string;
+}
 
 interface TransportImpl {
   send(payload: string): boolean; // false → not open, caller should queue
@@ -42,6 +54,7 @@ export class OxdmClient {
   private token = '';
   private transportPref: Transport = 'auto';
   private listeners = new Set<(s: ConnState) => void>();
+  private errorListeners = new Set<(e: ConnError) => void>();
   private autoFellBackToWs = false;
   /** Set false by `stop()` to suppress reconnect loops while disabled. */
   private wantConnection = false;
@@ -52,10 +65,17 @@ export class OxdmClient {
     token: string;
     transport: Transport;
   }) {
+    // Tear down only when the live connection can no longer satisfy
+    // the new preference. Lets background "pin" a working transport
+    // (auto → ws) without dropping the session that just came up.
+    const transportSatisfied =
+      this.activeTransport != null &&
+      (opts.transport === 'auto' ||
+        opts.transport === this.activeTransport);
     const changed =
       opts.port !== this.port ||
       opts.token !== this.token ||
-      opts.transport !== this.transportPref;
+      (opts.transport !== this.transportPref && !transportSatisfied);
     this.port = opts.port;
     this.token = opts.token;
     this.transportPref = opts.transport;
@@ -70,10 +90,30 @@ export class OxdmClient {
     }
   }
 
+  /** Live transport (null if not connected). Lets callers learn what
+   * 'auto' resolved to so they can persist a preference. */
+  getActiveTransport(): 'native' | 'ws' | null {
+    return this.activeTransport;
+  }
+
+  getTransportPref(): Transport {
+    return this.transportPref;
+  }
+
   onState(cb: (s: ConnState) => void) {
     this.listeners.add(cb);
     cb(this.state);
     return () => this.listeners.delete(cb);
+  }
+
+  onError(cb: (e: ConnError) => void) {
+    this.errorListeners.add(cb);
+    return () => this.errorListeners.delete(cb);
+  }
+
+  private emitError(message: string) {
+    const e: ConnError = { transport: this.activeTransport, message };
+    for (const l of this.errorListeners) l(e);
   }
 
   getState() {
@@ -114,6 +154,7 @@ export class OxdmClient {
     if (this.transportPref === 'native') {
       // Native explicitly requested but unreachable. Stay in error
       // state; do not silently switch to WS.
+      this.emitError('native host unreachable (binary missing or manifest not installed)');
       this.setState('error');
       this.scheduleReconnect();
       return;
@@ -146,12 +187,16 @@ export class OxdmClient {
     });
     port.onDisconnect.addListener(() => {
       const err = (browser.runtime as any).lastError ?? (port as any).error;
+      const reason = err?.message ?? 'native host disconnected';
+      const wasConnected = this.state === 'connected';
       this.impl = null;
+      this.activeTransport = 'native';
+      this.emitError(reason);
       this.activeTransport = null;
       this.setState('disconnected');
-      this.failAllPending(err?.message ?? 'native host disconnected');
+      this.failAllPending(reason);
       // First-time failure on 'auto' → fall back to WS on next ensureOpen.
-      if (this.transportPref === 'auto' && this.state !== 'authed') {
+      if (this.transportPref === 'auto' && !wasConnected) {
         this.autoFellBackToWs = true;
       }
       this.scheduleReconnect();
@@ -173,13 +218,13 @@ export class OxdmClient {
       },
     };
 
-    // Native host does its own auth (reads oxdm.db). We're "authed"
+    // Native host does its own auth (reads oxdm.db). We're connected
     // the moment connectNative succeeds without onDisconnect firing
-    // on the same tick. Flush queue + mark authed; failures will
+    // on the same tick. Flush queue + mark connected; failures will
     // surface via onDisconnect.
     queueMicrotask(() => {
       if (this.impl === null) return;
-      this.setState('authed');
+      this.setState('connected');
       this.backoffMs = 1000;
       for (const m of this.queue) this.impl.send(m);
       this.queue = [];
@@ -193,7 +238,8 @@ export class OxdmClient {
     let ws: WebSocket;
     try {
       ws = new WebSocket(`ws://127.0.0.1:${this.port}`);
-    } catch {
+    } catch (e) {
+      this.emitError(`WebSocket construct failed: ${(e as Error)?.message ?? String(e)}`);
       this.setState('error');
       this.scheduleReconnect();
       return;
@@ -210,28 +256,64 @@ export class OxdmClient {
         } catch {}
       },
     };
+    // Heuristic auth-rejection detection: the wire has no positive
+    // ack for the auth frame — oxdm just closes the socket on bad
+    // token. So we flag "awaiting auth" between sending the frame
+    // and either a server reply landing or a short grace period
+    // passing. A close during that window is almost certainly a
+    // token rejection, not a transport drop.
+    let awaitingAuth = false;
+    const clearAwaiting = () => {
+      awaitingAuth = false;
+    };
     ws.addEventListener('open', () => {
+      awaitingAuth = true;
       ws.send(JSON.stringify({ token: this.token }));
-      this.setState('authed');
+      this.setState('connected');
       this.backoffMs = 1000;
+      // First reply from the server = auth implicitly accepted.
+      // Otherwise auto-clear after a grace so a quiet but valid
+      // session doesn't stay flagged forever.
+      setTimeout(clearAwaiting, 1500);
       for (const m of this.queue) ws.send(m);
       this.queue = [];
     });
-    ws.addEventListener('message', (ev) => this.handleMessage(ev.data));
-    ws.addEventListener('close', () => {
+    ws.addEventListener('message', (ev) => {
+      clearAwaiting();
+      this.handleMessage(ev.data);
+    });
+    ws.addEventListener('close', (ev) => {
+      // If close fires while we're still waiting for the first
+      // server-originated reply, attribute it to auth rejection.
+      // Otherwise surface the close code verbatim.
+      const reason = awaitingAuth
+        ? 'token rejected by oxdm — paste a fresh pairing code from oxdm Settings'
+        : ev.reason ||
+          `socket closed (code ${ev.code}${ev.wasClean ? '' : ', abnormal'})`;
       this.impl = null;
+      this.emitError(reason);
       this.activeTransport = null;
       this.setState('disconnected');
-      this.failAllPending('socket closed');
+      this.failAllPending(reason);
       this.scheduleReconnect();
     });
-    ws.addEventListener('error', () => this.setState('error'));
+    ws.addEventListener('error', () => {
+      // Browsers do not expose the underlying error to WebSocket
+      // `error` handlers for security reasons; we only know that
+      // something went wrong. The follow-up `close` carries the
+      // code, and `awaitingAuth` lets us flag token rejection there.
+      this.emitError('WebSocket error (oxdm likely not listening on port)');
+      this.setState('error');
+    });
   }
 
   private scheduleReconnect() {
     if (!this.wantConnection) return;
     if (this.reconnectTimer) return;
     const delay = this.backoffMs;
+    // Surface that we're between attempts so the UI can show a
+    // distinct badge instead of "disconnected" → snap to "connecting".
+    this.setState('reconnecting');
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (this.wantConnection) this.ensureOpen();

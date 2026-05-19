@@ -12,7 +12,7 @@ export default defineContentScript({
 
     const reconcile = () => {
       const want =
-        settings.enabled && settings.injectButton && connState === 'authed';
+        settings.enabled && settings.injectButton && connState === 'connected';
       if (want && !handle) handle = startScanner();
       if (!want && handle) {
         stop();

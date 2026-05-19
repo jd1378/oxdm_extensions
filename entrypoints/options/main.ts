@@ -6,6 +6,11 @@ import {
   DEFAULTS,
   type Settings,
 } from '@/src/shared/state';
+import {
+  getLogs,
+  onLogsChange,
+  type LogEntry,
+} from '@/src/shared/log';
 
 const app = document.getElementById('app')!;
 let settings: Settings;
@@ -22,6 +27,7 @@ function render() {
         <nav class="nav">
           <a class="active" data-tab="connection">Connection</a>
           <a data-tab="detection">Detection</a>
+          <a data-tab="logs">Logs</a>
           <a data-tab="about">About</a>
         </nav>
       </aside>
@@ -80,6 +86,31 @@ function render() {
           </section>
         </section>
 
+        <section data-panel="logs" class="panel">
+          <h1 class="title">Logs</h1>
+          <p class="subtitle">
+            Recent connection errors and capture rejections. Useful for
+            diagnosing why the extension can't reach oxdm or why a
+            download was refused. Capped at the most recent 100 entries.
+          </p>
+          <section class="card">
+            <div class="logs-header">
+              <h2>Recent entries</h2>
+              <button class="btn btn-compact" id="logs-clear" type="button" title="Clear all log entries">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 6h18"/>
+                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                  <path d="M10 11v6"/>
+                  <path d="M14 11v6"/>
+                </svg>
+                <span>Clear</span>
+              </button>
+            </div>
+            <div id="logs-list" class="logs"></div>
+          </section>
+        </section>
+
         <section data-panel="about" class="panel">
           <h1 class="title">About</h1>
           <p class="subtitle">oxdm browser extension — capture downloads and route them to the oxdm desktop app.</p>
@@ -135,6 +166,59 @@ function render() {
 
   refreshConnection();
   setInterval(refreshConnection, 1500);
+
+  const logsClear = document.getElementById('logs-clear');
+  logsClear?.addEventListener('click', async () => {
+    await browser.runtime.sendMessage({ kind: 'clear-logs' });
+    renderLogs([]);
+  });
+  void refreshLogs();
+}
+
+async function refreshLogs() {
+  // Pull through the background so a single source of truth exists
+  // even if storage-key conventions change later. Falls back to a
+  // direct storage read if the SW is asleep.
+  let logs: LogEntry[] = [];
+  try {
+    const r = (await browser.runtime.sendMessage({ kind: 'get-logs' })) as {
+      logs?: LogEntry[];
+    };
+    logs = r?.logs ?? [];
+  } catch {
+    logs = await getLogs();
+  }
+  renderLogs(logs);
+}
+
+function renderLogs(logs: LogEntry[]) {
+  const list = document.getElementById('logs-list');
+  if (!list) return;
+  if (!logs.length) {
+    list.innerHTML = '<div class="logs-empty">No entries yet.</div>';
+    return;
+  }
+  const rows: string[] = [];
+  // Newest first.
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const e = logs[i];
+    const ts = new Date(e.ts).toLocaleTimeString();
+    const cls = `logs-row logs-${e.level}`;
+    rows.push(
+      `<div class="${cls}"><span class="logs-ts">${ts}</span>` +
+        `<span class="logs-src">${escapeHtml(e.source)}</span>` +
+        `<span class="logs-msg">${escapeHtml(e.message)}</span></div>`,
+    );
+  }
+  list.innerHTML = rows.join('');
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 async function refreshConnection() {
@@ -148,8 +232,8 @@ async function refreshConnection() {
     const s = r?.state ?? 'disconnected';
     text.textContent = s;
     dot.className = 'dot';
-    if (s === 'authed') dot.classList.add('ok');
-    else if (s === 'connecting') dot.classList.add('warn');
+    if (s === 'connected') dot.classList.add('ok');
+    else if (s === 'connecting' || s === 'reconnecting') dot.classList.add('warn');
     else if (s === 'error') dot.classList.add('err');
   } catch {}
 }
@@ -185,4 +269,7 @@ function flashSaved() {
 (async () => {
   settings = await getSettings();
   render();
+  // Live-update the log panel whenever a new entry is pushed by the
+  // background. Cheap: render only runs while the Options tab is open.
+  onLogsChange((logs) => renderLogs(logs));
 })();

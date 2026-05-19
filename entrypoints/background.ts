@@ -1,4 +1,5 @@
 import { client } from '@/src/shared/ipc';
+import { clearLogs, getLogs, pushLog } from '@/src/shared/log';
 import {
   getCachedRules,
   getSettings,
@@ -35,8 +36,45 @@ async function init() {
   });
 
   let lastSyncedState = '';
+  client.onError((e) => {
+    void pushLog(
+      'error',
+      e.transport ? `ipc/${e.transport}` : 'ipc',
+      e.message,
+    );
+    // Token rejection while pinned to ws means the saved pairing
+    // code no longer works. Revert to auto so a working native host
+    // (if installed) can take over without the user having to touch
+    // the Options page.
+    if (
+      e.transport === 'ws' &&
+      settings.transport === 'ws' &&
+      /token rejected/i.test(e.message)
+    ) {
+      void pushLog(
+        'info',
+        'ipc',
+        'reverting transport to "auto" after token rejection',
+      );
+      void setSettings({ transport: 'auto' });
+    }
+  });
   client.onState((cs) => {
-    if (cs === 'authed' && lastSyncedState !== 'authed') {
+    if (cs === 'connected' && lastSyncedState !== 'connected') {
+      void pushLog('info', 'ipc', 'connected to oxdm');
+      // Learn what auto resolved to and persist it. Skips the native
+      // probe on subsequent startups (faster, fewer log lines, no
+      // spurious "native host unreachable" entries on machines where
+      // only WS was ever going to work).
+      const active = client.getActiveTransport();
+      if (settings.transport === 'auto' && active) {
+        void pushLog(
+          'info',
+          'ipc',
+          `pinning transport to "${active}" (auto resolved to it)`,
+        );
+        void setSettings({ transport: active });
+      }
       void syncRules();
     }
     lastSyncedState = cs;
@@ -105,7 +143,10 @@ function applyClientConfig(s: Settings) {
 
 async function syncRules() {
   const wire = await client.getRules();
-  if (!wire) return;
+  if (!wire) {
+    await pushLog('warn', 'rules', 'oxdm did not return capture rules; using last cache');
+    return;
+  }
   const next: CaptureRules = {
     minSize: wire.min_size ?? 0,
     skipDomains: wire.skip_domains ?? [],
@@ -143,6 +184,11 @@ async function handleRuntimeMsg(msg: RuntimeMsg): Promise<unknown> {
       return { state: client.getState() };
     case 'menu-state':
       await applyMenuState(msg.selection, msg.page);
+      return { ok: true };
+    case 'get-logs':
+      return { logs: await getLogs() };
+    case 'clear-logs':
+      await clearLogs();
       return { ok: true };
   }
 }
@@ -247,7 +293,10 @@ async function onDownloadCreated(item: any) {
     interactive: true,
   };
   const r = await client.capture(req);
-  if (r.result === 'rejected') notify('oxdm rejected download', r.reason);
+  if (r.result === 'rejected') {
+    void pushLog('warn', 'capture', `rejected: ${r.reason} (${item.url})`);
+    notify('oxdm rejected download', r.reason);
+  }
 }
 
 function notify(title: string, message: string) {
