@@ -24,7 +24,6 @@ export interface Settings {
   port: number;
   token: string;
   injectButton: boolean;
-  scanIntervalMs: number;
 }
 
 /**
@@ -41,7 +40,6 @@ export const DEFAULTS: Settings = {
   port: 27812,
   token: '',
   injectButton: true,
-  scanIntervalMs: 5000,
 };
 
 const KEY = 'oxdm:settings';

@@ -21,7 +21,6 @@ function render() {
         <div class="section-label">Settings</div>
         <nav class="nav">
           <a class="active" data-tab="connection">Connection</a>
-          <a data-tab="capture">Capture</a>
           <a data-tab="detection">Detection</a>
           <a data-tab="about">About</a>
         </nav>
@@ -65,20 +64,6 @@ function render() {
           </section>
         </section>
 
-        <section data-panel="capture" class="panel">
-          <h1 class="title">Capture</h1>
-          <p class="subtitle">How the extension scans pages for download links.</p>
-
-          <section class="card">
-            <h2>Scanning</h2>
-            <div class="field">
-              <label for="scanIntervalMs">Scan interval (ms)</label>
-              <input type="number" id="scanIntervalMs" min="500" />
-              <div class="help">How often the content script re-walks the DOM.</div>
-            </div>
-          </section>
-        </section>
-
         <section data-panel="detection" class="panel">
           <h1 class="title">Detection</h1>
           <p class="subtitle">In-page affordances near download-ish links.</p>
@@ -119,7 +104,6 @@ function render() {
 
   set('transport', settings.transport);
   set('pairingCode', settings.pairingCode);
-  set('scanIntervalMs', settings.scanIntervalMs);
   (document.getElementById('injectButton') as HTMLInputElement).checked = settings.injectButton;
 
   for (const a of app.querySelectorAll<HTMLAnchorElement>('.nav a')) {
@@ -186,7 +170,6 @@ async function save() {
   const patch: Partial<Settings> = {
     transport: ['auto', 'native', 'ws'].includes(transport) ? transport : 'auto',
     pairingCode: get('pairingCode').trim(),
-    scanIntervalMs: Math.max(500, +get('scanIntervalMs') || DEFAULTS.scanIntervalMs),
     injectButton: (document.getElementById('injectButton') as HTMLInputElement).checked,
   };
   await setSettings(patch);
