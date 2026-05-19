@@ -77,14 +77,10 @@ html, body {
 }
 .logo {
   width: 40px; height: 40px;
-  border-radius: 50%;
-  background: var(--bg-sunken);
-  border: 2px solid var(--border-subtle);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  overflow: hidden;
 }
-.logo img { width: 28px; height: 28px; display: block; }
+.logo img { width: 40px; height: 40px; display: block; }
 .brand {
   font: 700 15px/1.2 'Fraunces', Georgia, serif;
   color: var(--fg-1);
