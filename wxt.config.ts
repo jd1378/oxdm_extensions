@@ -66,6 +66,14 @@ export default defineConfig({
             gecko: {
               id: 'oxdm@jd1378.github.io',
               strict_min_version: '115.0',
+              // Mandatory for AMO submissions since 3 Nov 2025.
+              // Mozilla scopes it to data handled "outside the add-on
+              // or the local browser": we transmit only to oxdm on
+              // this machine, over loopback or native messaging, and
+              // send nothing to any server of ours. Hence "none".
+              data_collection_permissions: {
+                required: ['none'],
+              },
             },
           },
         }

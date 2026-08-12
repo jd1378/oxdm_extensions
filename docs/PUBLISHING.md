@@ -97,6 +97,26 @@ The Firefox add-on ID is already fixed in `wxt.config.ts` as
 `oxdm@jd1378.github.io`, and oxdm's native-host manifest already lists
 it. Nothing to reconcile.
 
+### Data collection declaration
+
+AMO rejects new submissions without
+`browser_specific_settings.gecko.data_collection_permissions`, mandatory
+since 3 November 2025. It is set in `wxt.config.ts` to:
+
+```json
+"data_collection_permissions": { "required": ["none"] }
+```
+
+`none` is the right value here. Mozilla scopes the declaration to data
+handled "outside the add-on or the local browser"; this extension
+transmits only to oxdm on the same machine, over loopback or native
+messaging, and to no server of ours. If a reviewer queries the native
+messaging, the answer is that the host program is the user's own
+software on their own device, so nothing leaves the local system.
+
+The key is emitted for the Firefox build only. Chrome has no equivalent
+and rejects unknown manifest keys.
+
 ## Safari
 
 `pnpm zip:safari` produces the extension, but a distributable Safari app
