@@ -17,7 +17,7 @@ ends so nothing reaches a store without being looked at:
    attaches:
 
    | asset | goes to |
-   |-------|---------|
+   | --- | --- |
    | `oxdm-extension-<v>-chrome.zip` | Chrome Web Store |
    | `oxdm-extension-<v>-firefox.zip` | AMO |
    | `oxdm-extension-<v>-safari.zip` | input to the Xcode converter |
@@ -41,8 +41,12 @@ them anywhere.
 `.github/workflows/pages.yml` on every push to `main` that touches
 `site/`.
 
-One-time setup: **Settings → Pages → Build and deployment → Source →
-GitHub Actions**. Without it the workflow fails at the deploy step.
+The workflow passes `enablement: true` to `actions/configure-pages`, so
+it turns Pages on itself the first time it runs. If that step still
+reports *Get Pages site failed*, Pages is unavailable for the repository
+rather than merely unconfigured: it needs a public repo, or a plan that
+includes Pages for private ones. The manual equivalent is **Settings →
+Pages → Build and deployment → Source → GitHub Actions**.
 
 Both stores want the resulting URL
 (`https://jd1378.github.io/oxdm_extensions/`). Keep it reachable for as
@@ -134,7 +138,7 @@ Chrome asks for one per permission. These are also worth pasting into
 the AMO notes-for-reviewer field.
 
 | Permission | Justification |
-|------------|---------------|
+| --- | --- |
 | `downloads` | Detects a download starting in the browser and cancels it so oxdm can take it over. This interception is the extension's core feature. |
 | `cookies` | Reads the cookies for the specific URL being downloaded and passes them to oxdm, so files behind a login are downloaded as the logged-in user rather than failing. Only cookies matching that one URL are read. |
 | `nativeMessaging` | Sends the download to the local `oxdm-native-host` program, one of the two supported ways to reach the desktop application. |
