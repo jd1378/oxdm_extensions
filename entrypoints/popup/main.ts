@@ -12,8 +12,10 @@ const app = document.getElementById('app')!;
 let settings: Settings;
 let connState = 'disconnected';
 
+// Reports the connection only. Auto-capture has its own row, and
+// conflating the two used to make a paused capture look like a broken
+// link to oxdm.
 function statusLine(): { text: string; cls: string } {
-  if (!settings.enabled) return { text: 'disabled', cls: 'warn' };
   switch (connState) {
     case 'connected':       return { text: 'connected',     cls: 'ok' };
     case 'connecting':      return { text: 'connecting…',   cls: 'warn' };
@@ -35,12 +37,12 @@ function render() {
       </div>
     </div>
 
-    <div class="row" data-action="toggle-enabled">
+    <div class="row" data-action="toggle-auto-capture">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M12 2v14"/><path d="m6 12 6 6 6-6"/><path d="M4 22h16"/>
       </svg>
       <span class="label">Auto capture downloads</span>
-      <button class="switch ${settings.enabled ? 'on' : ''}" aria-label="toggle"></button>
+      <button class="switch ${settings.autoCapture ? 'on' : ''}" aria-label="toggle"></button>
     </div>
 
     <div class="row" data-action="toggle-interactive">
@@ -77,8 +79,8 @@ function render() {
 
 async function onAction(action: string) {
   switch (action) {
-    case 'toggle-enabled':
-      await setSettings({ enabled: !settings.enabled });
+    case 'toggle-auto-capture':
+      await setSettings({ autoCapture: !settings.autoCapture });
       break;
     case 'toggle-interactive':
       await setSettings({ interactive: !settings.interactive });

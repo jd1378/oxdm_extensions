@@ -10,7 +10,17 @@ export type Transport = 'auto' | 'native' | 'ws';
  * time — see `CachedRules` below.
  */
 export interface Settings {
-  enabled: boolean;
+  /**
+   * Intercept `downloads.onCreated` and hand the URL to oxdm instead
+   * of letting the browser download it.
+   *
+   * Scoped to that interception alone — it does **not** gate the
+   * connection to oxdm, the context menu, or the in-page pin. Turning
+   * auto-capture off is a statement about the browser's own download
+   * bar, not about wanting the extension offline; the context menu
+   * has to keep working.
+   */
+  autoCapture: boolean;
   /** Transport selection. 'auto' tries native first then falls back to WS. */
   transport: Transport;
   /**
@@ -62,7 +72,7 @@ export interface Settings {
 export const NATIVE_HOST_NAME = 'io.github.jd1378.oxdm.host';
 
 export const DEFAULTS: Settings = {
-  enabled: true,
+  autoCapture: true,
   transport: 'auto',
   pairingCode: '',
   port: 27812,
@@ -78,8 +88,21 @@ const KEY = 'oxdm:settings';
 
 export async function getSettings(): Promise<Settings> {
   const got = await browser.storage.local.get(KEY);
-  const stored = (got[KEY] ?? {}) as Partial<Settings>;
-  return { ...DEFAULTS, ...stored };
+  return { ...DEFAULTS, ...migrate((got[KEY] ?? {}) as Partial<Settings>) };
+}
+
+/**
+ * `enabled` used to mean both "stay connected" and "auto-capture",
+ * which meant switching capture off also took the context menu down
+ * with it. It is now `autoCapture` and covers interception only; an
+ * existing off-switch carries over to the narrower meaning.
+ */
+function migrate(stored: Partial<Settings>): Partial<Settings> {
+  const legacy = (stored as { enabled?: boolean }).enabled;
+  if (legacy !== undefined && stored.autoCapture === undefined) {
+    return { ...stored, autoCapture: legacy };
+  }
+  return stored;
 }
 
 export async function setSettings(patch: Partial<Settings>): Promise<Settings> {
@@ -110,7 +133,7 @@ export function onSettingsChange(cb: (s: Settings) => void) {
   browser.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
     if (!(KEY in changes)) return;
-    const next = { ...DEFAULTS, ...(changes[KEY].newValue ?? {}) };
+    const next = { ...DEFAULTS, ...migrate(changes[KEY].newValue ?? {}) };
     cb(next as Settings);
   });
 }

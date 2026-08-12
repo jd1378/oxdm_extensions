@@ -24,21 +24,19 @@ async function init() {
   rules = await getCachedRules();
   applyAction();
   applyClientConfig(settings);
-  if (settings.enabled) client.ensureOpen();
+  // The connection is unconditional. It carries the context menu, the
+  // in-page pin and the capture-rules sync, none of which depend on
+  // auto-capture being on.
+  client.ensureOpen();
 
   onSettingsChange((s) => {
-    const wasEnabled = settings.enabled;
     settings = s;
     applyAction();
     applyClientConfig(s);
-    if (!s.enabled && wasEnabled) {
-      client.stop();
-    } else if (s.enabled) {
-      // Always kick the client: configure() may have torn down a
-      // live session, and a fresh token should retry an existing
-      // token-rejected / wsTokenBlocked latch.
-      client.ensureOpen();
-    }
+    // Always kick the client: configure() may have torn down a live
+    // session, and a fresh token should retry an existing
+    // token-rejected / wsTokenBlocked latch.
+    client.ensureOpen();
   });
 
   let lastSyncedState = '';
@@ -91,7 +89,7 @@ async function init() {
     }
     lastSyncedState = cs;
     browser.action.setTitle({
-      title: `oxdm — ${settings.enabled ? 'on' : 'off'} (${cs})`,
+      title: `oxdm — ${cs}${settings.autoCapture ? '' : ', auto-capture off'}`,
     });
     // Tell every content script whether the host is reachable so they
     // can show / hide injected affordances. Best-effort broadcast.
@@ -109,7 +107,7 @@ async function init() {
   });
 
   browser.action.onClicked.addListener(async () => {
-    await setSettings({ enabled: !settings.enabled });
+    await setSettings({ autoCapture: !settings.autoCapture });
   });
 
   // `icons` on context menu items is Firefox-only. Chromium throws
@@ -196,9 +194,10 @@ async function syncRules() {
 }
 
 function applyAction() {
-  // Single unified icon; capture state shows as a badge over it so we
-  // don't need a second artwork variant for the disabled case.
-  if (settings.enabled) {
+  // Single unified icon; auto-capture state shows as a badge over it
+  // so we don't need a second artwork variant for the off case. The
+  // badge says nothing about the connection — the popup does that.
+  if (settings.autoCapture) {
     browser.action.setBadgeText({ text: '' });
   } else {
     browser.action.setBadgeText({ text: 'off' });
@@ -268,7 +267,10 @@ async function applyMenuState(selection: number, page: number) {
 }
 
 async function onContextMenu(info: any, tab?: any) {
-  if (!settings.enabled || info.menuItemId !== 'oxdm-send') return;
+  // Not gated on auto-capture: an explicit right-click is the user
+  // asking for this one download, which is exactly what someone who
+  // turned interception off still wants.
+  if (info.menuItemId !== 'oxdm-send') return;
   // Single item across all contexts — decide intent from info shape.
   if (info.linkUrl) {
     if (!isPublicHttpUrl(info.linkUrl)) {
@@ -366,7 +368,7 @@ async function readCookieHeader(
 }
 
 async function onDownloadCreated(item: any) {
-  if (!settings.enabled) return;
+  if (!settings.autoCapture) return;
   if (!item.url || !isPublicHttpUrl(item.url)) return;
   if (rules.minSize > 0 && item.fileSize > 0 && item.fileSize < rules.minSize) return;
   const mime = (item.mime ?? '').toLowerCase();

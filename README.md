@@ -9,11 +9,16 @@ config, three build targets (Chromium MV3, Firefox MV2, Safari MV3).
 
 ## Features
 
-- **Toolbar toggle** — click the action icon to switch capture on / off.
-  Icon swaps between idle (red dot in popup) and active (green).
-- **Download interception** — when on, `chrome.downloads.onCreated` is
-  cancelled + erased, and the URL is forwarded to oxdm with cookies,
-  referrer, UA, and any `Content-Disposition` filename hint.
+- **Toolbar toggle** — click the action icon to switch auto-capture on
+  / off; an `off` badge marks the disabled state.
+- **Download interception** — when auto-capture is on,
+  `chrome.downloads.onCreated` is cancelled + erased, and the URL is
+  forwarded to oxdm with cookies, referrer, UA, and any
+  `Content-Disposition` filename hint. Switching it off scopes the
+  extension to explicit sends only — the connection, context menu and
+  in-page pin all keep working, since someone who wants the browser to
+  handle its own downloads still wants "Download with oxdm" on a
+  right-click.
 - **In-page button injection** — periodic viewport scan (default 5 s,
   stops on `load`, runs once more) finds anchors with a `download`
   attribute or downloadable URL extensions / paths and pins an oxdm
@@ -93,7 +98,7 @@ requires Xcode's `safari-web-extension-converter` on macOS.
 
 ## Project layout
 
-```
+```text
 entrypoints/
   background.ts        # WS client, download intercept, message router
   content.ts           # in-page scanner bootstrap
@@ -138,15 +143,15 @@ silently. The queue setting therefore applies to single captures only.
 The extension's job ends at the handoff. It owns only what lives in the
 browser and what oxdm cannot see:
 
-| the extension owns                                   | oxdm owns                                          |
-|------------------------------------------------------|----------------------------------------------------|
-| Intercepting `downloads.onCreated`, cancel + erase    | Everything after `accept_capture`                  |
-| Cookie jar, real User-Agent, page referrer            | Filename resolution + numbering, `Content-Disposition` |
-| In-page detection (pin, selection, context menu)      | Save folder, category classification, segments     |
-| Applying the capture rules oxdm authored              | Authoring those rules (Settings → Browser integration) |
-| Rejecting loopback / RFC1918 / link-local URLs        | Scheme guard only — LAN is allowed for token holders |
-| Whether the Add dialog opens (`interactive`)          | The dialog itself, and every choice inside it      |
-| Queue only when no dialog will open                   | Per-category queue rules, Main fallback, schedulers |
+| the extension owns                                 | oxdm owns                                              |
+|----------------------------------------------------|--------------------------------------------------------|
+| Intercepting `downloads.onCreated`, cancel + erase  | Everything after `accept_capture`                      |
+| Cookie jar, real User-Agent, page referrer          | Filename resolution + numbering, `Content-Disposition` |
+| In-page detection (pin, selection, context menu)    | Save folder, category classification, segments         |
+| Applying the capture rules oxdm authored            | Authoring those rules (Settings → Browser integration) |
+| Rejecting loopback / RFC1918 / link-local URLs      | Scheme guard only — LAN is allowed for token holders   |
+| Whether the Add dialog opens (`interactive`)        | The dialog itself, and every choice inside it          |
+| Queue only when no dialog will open                 | Per-category queue rules, Main fallback, schedulers    |
 
 Two consequences worth keeping in mind when editing:
 

@@ -65,7 +65,10 @@ export class OxdmClient {
    * The user must paste a new pairing code to unblock.
    */
   private wsTokenBlocked = false;
-  /** Set false by `stop()` to suppress reconnect loops while disabled. */
+  /**
+   * Set by the first `ensureOpen()`. Keeps a close/error that fires
+   * during teardown from scheduling a reconnect nobody asked for.
+   */
   private wantConnection = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -146,24 +149,6 @@ export class OxdmClient {
     if (s === this.state) return;
     this.state = s;
     for (const l of this.listeners) l(s);
-  }
-
-  /** Stop reconnecting and close any open transport. Idempotent. */
-  stop() {
-    this.wantConnection = false;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    if (this.impl) {
-      try {
-        this.impl.close();
-      } catch {}
-      this.impl = null;
-    }
-    this.activeTransport = null;
-    this.setState('disconnected');
-    this.failAllPending('client stopped');
   }
 
   ensureOpen() {

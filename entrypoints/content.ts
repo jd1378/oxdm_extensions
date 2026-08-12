@@ -11,8 +11,9 @@ export default defineContentScript({
     let handle: ReturnType<typeof startScanner> | null = null;
 
     const reconcile = () => {
-      const want =
-        settings.enabled && settings.injectButton && connState === 'connected';
+      // Auto-capture deliberately absent: the pin is a manual send,
+      // governed by its own toggle. It only needs oxdm reachable.
+      const want = settings.injectButton && connState === 'connected';
       if (want && !handle) handle = startScanner();
       if (!want && handle) {
         stop();
