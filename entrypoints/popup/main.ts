@@ -43,6 +43,14 @@ function render() {
       <button class="switch ${settings.enabled ? 'on' : ''}" aria-label="toggle"></button>
     </div>
 
+    <div class="row" data-action="toggle-interactive">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <span class="label">Ask before downloading</span>
+      <button class="switch ${settings.interactive ? 'on' : ''}" aria-label="toggle"></button>
+    </div>
+
     <div class="row" data-action="toggle-inject">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
@@ -71,6 +79,9 @@ async function onAction(action: string) {
   switch (action) {
     case 'toggle-enabled':
       await setSettings({ enabled: !settings.enabled });
+      break;
+    case 'toggle-interactive':
+      await setSettings({ interactive: !settings.interactive });
       break;
     case 'toggle-inject':
       await setSettings({ injectButton: !settings.injectButton });

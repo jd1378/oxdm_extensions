@@ -25,6 +25,25 @@ export interface Settings {
   token: string;
   injectButton: boolean;
   /**
+   * `true` → oxdm opens its Add-Download dialog for every single
+   * capture, and owns queue / folder / filename choices there.
+   * `false` → the job is queued and started straight away, which is
+   * the only case where the extension has any business picking a
+   * queue (see `defaultQueue`).
+   *
+   * Batches ignore this: they always go to oxdm's triage dialog.
+   */
+  interactive: boolean;
+  /**
+   * Queue id for non-interactive captures, from oxdm's own queue list
+   * (`list_queues`). Empty means "don't send one", which lets oxdm
+   * apply its per-category queue rules and fall back to Main.
+   * Ignored entirely while `interactive` is true.
+   */
+  defaultQueue: string;
+  /** Display label for `defaultQueue`; refreshed whenever we list. */
+  defaultQueueName: string;
+  /**
    * True when the current `transport` value came from the auto-pin
    * codepath (we observed which transport `auto` resolved to and
    * wrote it back). Cleared whenever the user explicitly changes
@@ -49,6 +68,9 @@ export const DEFAULTS: Settings = {
   port: 27812,
   token: '',
   injectButton: true,
+  interactive: true,
+  defaultQueue: '',
+  defaultQueueName: '',
   transportPinnedByAuto: false,
 };
 

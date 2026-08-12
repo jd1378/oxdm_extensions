@@ -97,18 +97,17 @@ export default defineContentScript({
 
 function sendOneOrBatch(urls: string[]) {
   if (urls.length === 1) {
+    // `interactive` is the background's call — it owns the setting.
     browser.runtime.sendMessage({
       kind: 'capture',
-      req: { url: urls[0], referrer: location.href, interactive: true },
+      req: { url: urls[0], referrer: location.href },
     });
   } else if (urls.length > 1) {
+    // `interactive` left unset: oxdm defaults batches to its triage
+    // dialog, which is what a page-driven selection should get.
     browser.runtime.sendMessage({
       kind: 'batch',
-      items: urls.map((u) => ({
-        url: u,
-        referrer: location.href,
-        interactive: false,
-      })),
+      items: urls.map((u) => ({ url: u, referrer: location.href })),
     });
   }
 }

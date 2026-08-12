@@ -11,9 +11,11 @@ import {
   onLogsChange,
   type LogEntry,
 } from '@/src/shared/log';
+import type { QueueSummary } from '@/src/shared/messages';
 
 const app = document.getElementById('app')!;
 let settings: Settings;
+let connPoll: ReturnType<typeof setInterval> | null = null;
 
 function render() {
   app.innerHTML = `
@@ -26,6 +28,7 @@ function render() {
         <div class="section-label">Settings</div>
         <nav class="nav">
           <a class="active" data-tab="connection">Connection</a>
+          <a data-tab="handoff">Handoff</a>
           <a data-tab="detection">Detection</a>
           <a data-tab="logs">Logs</a>
           <a data-tab="about">About</a>
@@ -61,6 +64,40 @@ function render() {
             </div>
           </section>
 
+        </section>
+
+        <section data-panel="handoff" class="panel">
+          <h1 class="title">Handoff</h1>
+          <p class="subtitle">What happens the moment a download reaches oxdm.</p>
+
+          <section class="card">
+            <h2>Add dialog</h2>
+            <div class="toggle-row">
+              <label for="interactive">
+                Ask before downloading
+                <div class="help">
+                  oxdm opens its Add Download dialog, where you set the folder,
+                  filename, category, queue and segments before it starts.
+                  Turn this off to send jobs straight to a queue.
+                </div>
+              </label>
+              <input type="checkbox" id="interactive" class="switch" />
+            </div>
+          </section>
+
+          <section class="card" id="routing-card">
+            <h2>Queue</h2>
+            <p class="hint">
+              Only used when the Add dialog is off — when it is on, you pick the
+              queue there instead. Multi-link selections always go to oxdm's
+              triage dialog, which has its own queue selector.
+            </p>
+            <div class="field">
+              <label for="defaultQueue">Send to</label>
+              <select id="defaultQueue"></select>
+              <div class="help" id="queues-help">Queue list comes from oxdm; connect to load it.</div>
+            </div>
+          </section>
         </section>
 
         <section data-panel="detection" class="panel">
@@ -140,6 +177,12 @@ function render() {
   const transportEl = document.getElementById('transport') as HTMLSelectElement;
   transportEl.addEventListener('change', syncPairingDisabled);
   (document.getElementById('injectButton') as HTMLInputElement).checked = settings.injectButton;
+  const interactiveEl = document.getElementById('interactive') as HTMLInputElement;
+  interactiveEl.checked = settings.interactive;
+  interactiveEl.addEventListener('change', syncRoutingVisibility);
+  syncRoutingVisibility();
+  renderQueueOptions(null);
+  void loadQueues();
 
   for (const a of app.querySelectorAll<HTMLAnchorElement>('.nav a')) {
     a.addEventListener('click', (ev) => {
@@ -169,7 +212,10 @@ function render() {
   });
 
   refreshConnection();
-  setInterval(refreshConnection, 1500);
+  // render() runs again on Reset — without clearing, each pass would
+  // stack another poller on the same page.
+  if (connPoll !== null) clearInterval(connPoll);
+  connPoll = setInterval(refreshConnection, 1500);
 
   const logsClear = document.getElementById('logs-clear');
   logsClear?.addEventListener('click', async () => {
@@ -177,6 +223,69 @@ function render() {
     renderLogs([]);
   });
   void refreshLogs();
+}
+
+/** The queue picker is inert while oxdm's Add dialog is doing the
+ *  asking — grey it out rather than hide it, so the reason stays
+ *  visible instead of the card vanishing. */
+function syncRoutingVisibility() {
+  const on = (document.getElementById('interactive') as HTMLInputElement)?.checked;
+  const card = document.getElementById('routing-card');
+  const sel = document.getElementById('defaultQueue') as HTMLSelectElement | null;
+  if (sel) sel.disabled = !!on;
+  if (card) card.classList.toggle('disabled', !!on);
+}
+
+/**
+ * Paint the queue `<select>`. `queues === null` means we have no live
+ * list (oxdm offline, or not asked yet) — keep showing the stored
+ * choice so saving the page can't silently reset routing to Main.
+ */
+function renderQueueOptions(queues: QueueSummary[] | null) {
+  const sel = document.getElementById('defaultQueue') as HTMLSelectElement | null;
+  if (!sel) return;
+  // Sending no queue is not the same as sending Main: it lets oxdm
+  // apply its own per-category queue rules, which fall back to Main.
+  // Picking Main explicitly here would override those rules.
+  const opts = ['<option value="">Let oxdm decide (category rules, else Main)</option>'];
+  const list =
+    queues ??
+    (settings.defaultQueue
+      ? [{ id: settings.defaultQueue, name: settings.defaultQueueName || 'saved queue' }]
+      : []);
+  for (const q of list) {
+    opts.push(
+      `<option value="${escapeHtml(q.id)}">${escapeHtml(q.name)}</option>`,
+    );
+  }
+  sel.innerHTML = opts.join('');
+  sel.value = list.some((q) => q.id === settings.defaultQueue)
+    ? settings.defaultQueue
+    : '';
+}
+
+async function loadQueues() {
+  const help = document.getElementById('queues-help');
+  let queues: QueueSummary[] | null = null;
+  try {
+    const r = (await browser.runtime.sendMessage({ kind: 'list-queues' })) as {
+      queues?: QueueSummary[] | null;
+    };
+    queues = r?.queues ?? null;
+  } catch {
+    queues = null;
+  }
+  if (!queues) {
+    if (help) help.textContent = 'Could not reach oxdm — showing the saved choice.';
+    return;
+  }
+  if (help) help.textContent = `${queues.length} queue(s) from oxdm.`;
+  // A queue deleted in oxdm should not stay selectable here.
+  if (settings.defaultQueue && !queues.some((q) => q.id === settings.defaultQueue)) {
+    await setSettings({ defaultQueue: '', defaultQueueName: '' });
+    settings = await getSettings();
+  }
+  renderQueueOptions(queues);
 }
 
 async function refreshLogs() {
@@ -226,6 +335,7 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+let lastConnState = '';
 async function refreshConnection() {
   try {
     const r = (await browser.runtime.sendMessage({ kind: 'connection-status' })) as {
@@ -241,6 +351,10 @@ async function refreshConnection() {
     else if (s === 'connecting' || s === 'reconnecting') dot.classList.add('warn');
     else if (s === 'error' || s === 'token-rejected') dot.classList.add('err');
     if (s === 'token-rejected') text.textContent = 'token rejected';
+    // The queue list is only obtainable while connected, so fetch it
+    // on the edge into 'connected' rather than polling for it.
+    if (s === 'connected' && lastConnState !== 'connected') void loadQueues();
+    lastConnState = s;
   } catch {}
 }
 
@@ -260,6 +374,7 @@ async function save() {
   const resolved = ['auto', 'native', 'ws'].includes(transport)
     ? transport
     : 'auto';
+  const queueSel = document.getElementById('defaultQueue') as HTMLSelectElement;
   const patch: Partial<Settings> = {
     transport: resolved,
     // Save = user-initiated. Any auto-pin from a previous session
@@ -267,8 +382,14 @@ async function save() {
     transportPinnedByAuto: false,
     pairingCode: get('pairingCode').trim(),
     injectButton: (document.getElementById('injectButton') as HTMLInputElement).checked,
+    interactive: (document.getElementById('interactive') as HTMLInputElement)
+      .checked,
+    defaultQueue: queueSel.value,
+    defaultQueueName: queueSel.value
+      ? (queueSel.selectedOptions[0]?.textContent ?? '').trim()
+      : '',
   };
-  await setSettings(patch);
+  settings = await setSettings(patch);
   flashSaved();
 }
 

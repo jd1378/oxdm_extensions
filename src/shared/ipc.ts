@@ -18,6 +18,7 @@ import type {
   Response,
   CaptureRequest,
   CaptureRulesWire,
+  QueueSummary,
 } from './messages';
 import { NATIVE_HOST_NAME, type Transport } from './state';
 
@@ -451,10 +452,30 @@ export class OxdmClient {
   }
 
   async batch(items: CaptureRequest[]): Promise<Response> {
-    // oxdm always opens the triage dialog for batches now; the
-    // `interactive` field is server-ignored. Kept out of the wire to
-    // shrink the shape.
+    // Deliberately no `interactive` / `queue` on the wire: oxdm only
+    // skips its triage dialog when the caller both opts out *and*
+    // routes every item to a queue. Never sending either keeps a
+    // hostile page that drives the extension from bulk-queueing
+    // downloads silently. Power-user scripts holding the token can
+    // still take the fast path themselves.
     return this.send({ kind: 'batch_capture', items });
+  }
+
+  /**
+   * oxdm's live queue list, for the non-interactive routing picker.
+   * `null` when oxdm is unreachable — callers keep their last choice
+   * rather than resetting it.
+   *
+   * The wire also carries `evaluate_url` (probe a URL for size /
+   * filename / resume support). We deliberately don't use it: both of
+   * oxdm's dialogs probe every row themselves, so calling it here
+   * would be a second round-trip for metadata the user is about to be
+   * shown anyway.
+   */
+  async listQueues(): Promise<QueueSummary[] | null> {
+    const r = await this.send({ kind: 'list_queues' });
+    if (r.result === 'queues') return r.queues;
+    return null;
   }
 }
 
@@ -540,7 +561,7 @@ function buildNativeErrorReason(
       '  1. The oxdm desktop app is not running — the shim exits with code 1 when it cannot reach the WebSocket bridge.',
       '     Fix: start oxdm. The shim will be respawned on the next request.',
       '  2. oxdm.db is missing or unreadable for the user that owns the browser process.',
-      '     The shim reads port + token from ~/.config/oxdm/oxdm.db (Linux) /',
+      '     The shim reads port + token from ~/.local/share/oxdm/oxdm.db (Linux) /',
       '     ~/Library/Application Support/oxdm/oxdm.db (macOS) / %APPDATA%\\oxdm\\oxdm.db (Windows).',
       '     If oxdm runs under a different user, point the shim at the real DB via a --db-path wrapper.',
       '  3. oxdm has never been launched on this machine, so oxdm.db / its settings table does not exist yet.',
@@ -548,7 +569,7 @@ function buildNativeErrorReason(
       '  4. The installed oxdm-native-host binary is older than this oxdm app and uses an incompatible wire shape.',
       '     Fix: rebuild + reinstall the host: cargo build --release --bin oxdm-native-host && oxdm/tools/install-native-host.sh ...',
       '  5. On Flatpak/Snap browsers, the shim may run under a sandbox that cannot see oxdm.db on the host.',
-      '     Fix: grant read access to the oxdm config dir, or pass --db-path to the binary in the host. Browser stderr typically holds the exact cause but is not exposed to the extension.',
+      '     Fix: grant read access to the oxdm data dir, or pass --db-path to the binary in the host. Browser stderr typically holds the exact cause but is not exposed to the extension.',
     ].join('\n');
   }
   if (!looksLikeNotFound) {

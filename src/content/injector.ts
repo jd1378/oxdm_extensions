@@ -209,7 +209,11 @@ function showPin(anchor: HTMLAnchorElement) {
   btn.querySelector('.body')!.addEventListener('click', (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
-    sendCapture(anchor.href, { interactive: true });
+    sendCapture(anchor.href, {
+      // `download="name.zip"` is the page's own claim about the file
+      // name; oxdm still prefers a server-provided one when present.
+      filename: anchor.getAttribute('download')?.trim() || undefined,
+    });
     hidePinNow();
   });
 
@@ -340,7 +344,7 @@ function bindSelectionClick(urls: string[]) {
   fresh.addEventListener('click', (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
-    if (urls.length === 1) sendCapture(urls[0], { interactive: true });
+    if (urls.length === 1) sendCapture(urls[0]);
     else sendBatch(urls);
     removeSelectionButton();
   });
@@ -431,20 +435,20 @@ export function removeAllButtons() {
   }
 }
 
-function sendCapture(url: string, opts: Partial<CaptureRequest>) {
-  const req: CaptureRequest = {
-    url,
-    referrer: location.href,
-    interactive: opts.interactive ?? true,
-  };
+// Cookies, User-Agent and the `interactive` handoff preference are
+// filled in by the background — a content script has access to none
+// of them.
+function sendCapture(url: string, opts: Partial<CaptureRequest> = {}) {
+  const req: CaptureRequest = { referrer: location.href, ...opts, url };
   browser.runtime.sendMessage({ kind: 'capture', req });
 }
 
 function sendBatch(urls: string[]) {
+  // No `interactive` here: oxdm defaults batches to its triage dialog,
+  // which is the behaviour we want for a page-driven selection.
   const items: CaptureRequest[] = urls.map((u) => ({
     url: u,
     referrer: location.href,
-    interactive: false,
   }));
   browser.runtime.sendMessage({ kind: 'batch', items });
 }

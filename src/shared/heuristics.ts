@@ -36,13 +36,16 @@ export function isDownloadishUrl(urlStr: string): boolean {
 }
 
 /**
- * Mirror of oxdm's `ipc::guard_public_http_url`. Reject non-http(s)
- * schemes plus any host that is loopback / private / link-local. We
- * apply this on the extension side so a malicious selection on
- * attacker.com cannot trick the user into pointing oxdm at internal
- * infrastructure (router admin panels, intranet pages, localhost
- * services). The daemon repeats the same check — both sides defend
- * defence-in-depth.
+ * Reject non-http(s) schemes plus any host that is loopback / private
+ * / link-local, so a malicious selection on attacker.com cannot trick
+ * the user into pointing oxdm at internal infrastructure (router
+ * admin panels, intranet pages, localhost services).
+ *
+ * This is *not* a mirror of a daemon-side check: oxdm's
+ * `ipc::guard_public_http_url` only guards the scheme, and allows LAN
+ * / loopback on purpose so a token-holding script can pull from a NAS
+ * or an internal mirror. Network-policy for page-driven captures is
+ * ours alone to enforce — do not relax it expecting a second gate.
  */
 export function isPublicHttpUrl(urlStr: string): boolean {
   let u: URL;

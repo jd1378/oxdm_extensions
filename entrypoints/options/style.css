@@ -158,6 +158,9 @@ body {
   font: 700 16px/1.2 'Plus Jakarta Sans', sans-serif;
   margin: 0 0 var(--space-1); color: var(--fg-1);
 }
+/* A card whose setting is currently overridden by another one. Dimmed
+   rather than hidden so the explanatory hint stays readable. */
+.card.disabled { opacity: .55; }
 .card .hint {
   color: var(--fg-3); font-size: 12px;
   margin: 0 0 var(--space-4);

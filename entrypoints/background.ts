@@ -208,12 +208,42 @@ function applyAction() {
 
 async function handleRuntimeMsg(msg: RuntimeMsg): Promise<unknown> {
   switch (msg.kind) {
-    case 'capture':
-      return client.capture(msg.req);
-    case 'batch':
-      return client.batch(msg.items);
+    case 'capture': {
+      // Content scripts can read neither the cookie jar nor settings
+      // the host cares about, so every request they originate is
+      // completed here. The URL is re-checked because this is the
+      // trust boundary — content-side filtering is a UX filter, not
+      // a guarantee.
+      if (!isPublicHttpUrl(msg.req.url)) {
+        return { result: 'rejected', reason: 'non-public URL refused' };
+      }
+      return client.capture(await enrich(msg.req));
+    }
+    case 'batch': {
+      const allowed = msg.items.filter((i) => isPublicHttpUrl(i.url));
+      const dropped = msg.items.length - allowed.length;
+      if (dropped > 0) {
+        void pushLog(
+          'warn',
+          'capture',
+          `dropped ${dropped} non-public URL(s) from batch`,
+        );
+      }
+      if (!allowed.length) {
+        return { result: 'rejected', reason: 'no public URLs in batch' };
+      }
+      const cookieCache = new Map<string, string | undefined>();
+      const items = await Promise.all(
+        // No interactive flag and no queue on batches — oxdm's triage
+        // dialog owns both. See `OxdmClient.batch`.
+        allowed.map((i) => enrich(i, { handoff: false, cookieCache })),
+      );
+      return client.batch(items);
+    }
     case 'connection-status':
       return { state: client.getState() };
+    case 'list-queues':
+      return { queues: await client.listQueues() };
     case 'menu-state':
       await applyMenuState(msg.selection, msg.page);
       return { ok: true };
@@ -245,8 +275,7 @@ async function onContextMenu(info: any, tab?: any) {
       notify('oxdm', `Refused non-public URL: ${info.linkUrl}`);
       return;
     }
-    const req = await buildCapture(info.linkUrl, tab, { interactive: true });
-    await client.capture(req);
+    await client.capture(await buildCapture(info.linkUrl, tab));
     return;
   }
   if (info.selectionText) {
@@ -265,25 +294,75 @@ async function buildCapture(
   tab?: any,
   extras?: Partial<CaptureRequest>,
 ): Promise<CaptureRequest> {
-  const cookies = await readCookieHeader(url);
-  return {
-    url,
-    referrer: tab?.url,
-    cookies,
-    user_agent: navigator.userAgent,
-    interactive: true,
-    ...(extras ?? {}),
-  };
+  return enrich({ url, referrer: tab?.url, ...(extras ?? {}) });
 }
 
-async function readCookieHeader(url: string): Promise<string | undefined> {
+interface EnrichOpts {
+  /**
+   * Apply the user's handoff preference (`interactive` + queue).
+   * Off for batches, which are always triaged by oxdm's own dialog.
+   */
+  handoff?: boolean;
+  /** Shared per-origin cookie memo, for batches that hit one host. */
+  cookieCache?: Map<string, string | undefined>;
+}
+
+/**
+ * Fill in the fields only the background can supply: the cookie jar
+ * and real User-Agent (a content script can read neither), plus the
+ * user's handoff preference.
+ *
+ * Everything *after* the handoff — filename resolution, save folder,
+ * category, segments, dedup — is oxdm's job and is deliberately not
+ * decided or duplicated here.
+ */
+async function enrich(
+  req: CaptureRequest,
+  opts: EnrichOpts = {},
+): Promise<CaptureRequest> {
+  const { handoff = true, cookieCache } = opts;
+  const out: CaptureRequest = { ...req };
+  if (out.cookies === undefined) {
+    out.cookies = await readCookieHeader(out.url, cookieCache);
+  }
+  if (out.user_agent === undefined) out.user_agent = navigator.userAgent;
+  if (handoff) {
+    out.interactive = settings.interactive;
+    // A queue is only ours to choose when no dialog opens. oxdm's Add
+    // dialog already has a queue picker, prefilled from the file's
+    // category, so sending one would silently override the user's
+    // own routing rules at the exact moment they can see them.
+    if (!settings.interactive && settings.defaultQueue) {
+      out.queue = settings.defaultQueue;
+    }
+  }
+  return out;
+}
+
+async function readCookieHeader(
+  url: string,
+  cache?: Map<string, string | undefined>,
+): Promise<string | undefined> {
+  // Cookies are scoped per origin, so a batch drawn from one page
+  // resolves with a single jar read instead of one per link.
+  let origin: string;
   try {
-    const list = await browser.cookies.getAll({ url });
-    if (!list.length) return undefined;
-    return list.map((c) => `${c.name}=${c.value}`).join('; ');
+    origin = new URL(url).origin;
   } catch {
     return undefined;
   }
+  if (cache?.has(origin)) return cache.get(origin);
+  let header: string | undefined;
+  try {
+    const list = await browser.cookies.getAll({ url });
+    header = list.length
+      ? list.map((c) => `${c.name}=${c.value}`).join('; ')
+      : undefined;
+  } catch {
+    header = undefined;
+  }
+  cache?.set(origin, header);
+  return header;
 }
 
 async function onDownloadCreated(item: any) {
@@ -313,17 +392,13 @@ async function onDownloadCreated(item: any) {
     await browser.downloads.erase({ id: item.id });
   } catch {}
 
-  const cookies = await readCookieHeader(item.url);
-  const req: CaptureRequest = {
+  const req = await enrich({
     url: item.url,
     filename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined,
     referrer: item.referrer || undefined,
-    cookies,
-    user_agent: navigator.userAgent,
     mime_type: item.mime || undefined,
     size: item.fileSize > 0 ? item.fileSize : undefined,
-    interactive: true,
-  };
+  });
   const r = await client.capture(req);
   if (r.result === 'rejected') {
     void pushLog('warn', 'capture', `rejected: ${r.reason} (${item.url})`);

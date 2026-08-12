@@ -24,6 +24,21 @@ export interface GetCaptureRulesRequest {
   id?: string;
 }
 
+export interface ListQueuesRequest {
+  kind: 'list_queues';
+  id?: string;
+}
+
+// The wire also defines `evaluate_url` (probe a URL for size /
+// filename / resume support). It is intentionally absent here: both
+// of oxdm's dialogs probe their own rows, so the extension has no
+// metadata to gather that oxdm isn't about to gather itself.
+
+export interface QueueSummary {
+  id: string;
+  name: string;
+}
+
 export interface CaptureRulesWire {
   min_size?: number;
   skip_domains?: string[];
@@ -37,6 +52,13 @@ export interface BatchCaptureRequest {
   kind: 'batch_capture';
   /** Correlation id; injected by the client. */
   id?: string;
+  /**
+   * Server default is `true` (open oxdm's triage dialog). The
+   * no-dialog fast path only fires on `false` *and* every item having
+   * a resolvable queue — which this extension never sets on batches,
+   * so a hostile page driving us cannot suppress triage.
+   */
+  interactive?: boolean;
   /** Default queue for items that don't carry their own. */
   queue?: string;
   /** Default queue name (case-insensitive). Ignored when `queue` is set. */
@@ -49,12 +71,15 @@ export interface BatchCaptureRequest {
 export type OutboundRequest =
   | ({ kind?: 'capture' } & CaptureRequest)
   | BatchCaptureRequest
-  | GetCaptureRulesRequest;
+  | GetCaptureRulesRequest
+  | ListQueuesRequest;
 
 export type Response =
   | { result: 'accepted'; job_id: string; id?: string }
   | { result: 'rejected'; reason: string; id?: string }
-  | { result: 'capture_rules'; id?: string; rules: CaptureRulesWire };
+  | { result: 'capture_rules'; id?: string; rules: CaptureRulesWire }
+  | { result: 'queues'; id?: string; queues: QueueSummary[] }
+  | { result: 'batch_result'; id?: string; accepted: string[]; rejected: string[] };
 
 // --- Internal extension-side messages (runtime.sendMessage) ---
 
@@ -62,6 +87,7 @@ export type RuntimeMsg =
   | { kind: 'capture'; req: CaptureRequest }
   | { kind: 'batch'; items: CaptureRequest[] }
   | { kind: 'connection-status' }
+  | { kind: 'list-queues' }
   | { kind: 'menu-state'; selection: number; page: number }
   | { kind: 'get-logs' }
   | { kind: 'clear-logs' };
