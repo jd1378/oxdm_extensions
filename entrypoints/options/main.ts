@@ -244,21 +244,26 @@ function syncRoutingVisibility() {
 function renderQueueOptions(queues: QueueSummary[] | null) {
   const sel = document.getElementById('defaultQueue') as HTMLSelectElement | null;
   if (!sel) return;
-  // Sending no queue is not the same as sending Main: it lets oxdm
-  // apply its own per-category queue rules, which fall back to Main.
-  // Picking Main explicitly here would override those rules.
-  const opts = ['<option value="">Let oxdm decide (category rules, else Main)</option>'];
   const list =
     queues ??
     (settings.defaultQueue
       ? [{ id: settings.defaultQueue, name: settings.defaultQueueName || 'saved queue' }]
       : []);
-  for (const q of list) {
-    opts.push(
-      `<option value="${escapeHtml(q.id)}">${escapeHtml(q.name)}</option>`,
-    );
-  }
-  sel.innerHTML = opts.join('');
+  // Built as DOM rather than markup: queue names come from oxdm, and
+  // `textContent` cannot be talked into being markup the way an escaped
+  // string concatenated into innerHTML can.
+  const addOption = (value: string, label: string) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = label;
+    sel.appendChild(o);
+  };
+  sel.replaceChildren();
+  // Sending no queue is not the same as sending Main: it lets oxdm
+  // apply its own per-category queue rules, which fall back to Main.
+  // Picking Main explicitly here would override those rules.
+  addOption('', 'Let oxdm decide (category rules, else Main)');
+  for (const q of list) addOption(q.id, q.name);
   sel.value = list.some((q) => q.id === settings.defaultQueue)
     ? settings.defaultQueue
     : '';
@@ -304,35 +309,42 @@ async function refreshLogs() {
   renderLogs(logs);
 }
 
+function span(cls: string, text: string): HTMLSpanElement {
+  const el = document.createElement('span');
+  el.className = cls;
+  el.textContent = text;
+  return el;
+}
+
 function renderLogs(logs: LogEntry[]) {
   const list = document.getElementById('logs-list');
   if (!list) return;
+  list.replaceChildren();
   if (!logs.length) {
-    list.innerHTML = '<div class="logs-empty">No entries yet.</div>';
+    const empty = document.createElement('div');
+    empty.className = 'logs-empty';
+    empty.textContent = 'No entries yet.';
+    list.appendChild(empty);
     return;
   }
-  const rows: string[] = [];
+  // Log messages quote URLs and server-supplied rejection reasons, so
+  // they are the one place page-controlled text reaches this page.
+  // Built as DOM with `textContent`, which never parses markup.
+  const frag = document.createDocumentFragment();
   // Newest first.
   for (let i = logs.length - 1; i >= 0; i--) {
     const e = logs[i];
-    const ts = new Date(e.ts).toLocaleTimeString();
-    const cls = `logs-row logs-${e.level}`;
-    const count = e.count && e.count > 1 ? ` ×${e.count}` : '';
-    rows.push(
-      `<div class="${cls}"><span class="logs-ts">${ts}</span>` +
-        `<span class="logs-src">${escapeHtml(e.source)}${count}</span>` +
-        `<span class="logs-msg">${escapeHtml(e.message)}</span></div>`,
+    const row = document.createElement('div');
+    // A property assignment, not markup: nothing here is parsed as HTML.
+    row.className = `logs-row logs-${e.level}`;
+    row.append(
+      span('logs-ts', new Date(e.ts).toLocaleTimeString()),
+      span('logs-src', e.source + (e.count && e.count > 1 ? ` ×${e.count}` : '')),
+      span('logs-msg', e.message),
     );
+    frag.appendChild(row);
   }
-  list.innerHTML = rows.join('');
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  list.appendChild(frag);
 }
 
 let lastConnState = '';

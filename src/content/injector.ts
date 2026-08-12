@@ -108,6 +108,32 @@ const css = `
 .x:active { background: rgba(255,255,255,.22); }
 `;
 
+// Both overlay widgets share the same two-part shape: an icon+label
+// body, and a ✕ that dismisses it. Built as DOM rather than markup so
+// nothing in this content script ever hands a string to an HTML parser
+// on a page we do not control.
+
+function buildBody(label: string, labelClass?: string): HTMLSpanElement {
+  const body = document.createElement('span');
+  body.className = 'body';
+  const img = document.createElement('img');
+  img.alt = '';
+  img.src = iconSrc;
+  const text = document.createElement('span');
+  if (labelClass) text.className = labelClass;
+  text.textContent = label;
+  body.append(img, text);
+  return body;
+}
+
+function buildDismiss(title: string): HTMLSpanElement {
+  const x = document.createElement('span');
+  x.className = 'x';
+  x.title = title;
+  x.textContent = '✕';
+  return x;
+}
+
 // ─── Pin (hover-anchored) ─────────────────────────────────────────
 
 const detectedAnchors = new Set<HTMLAnchorElement>();
@@ -184,11 +210,7 @@ function showPin(anchor: HTMLAnchorElement) {
   if (pinButton) pinButton.remove();
   const btn = document.createElement('div');
   btn.className = 'pin';
-  btn.innerHTML = `
-    <span class="body"><img alt="" /><span>Download</span></span>
-    <span class="x" title="hide">✕</span>
-  `;
-  (btn.querySelector('img') as HTMLImageElement).src = iconSrc;
+  btn.append(buildBody('Download'), buildDismiss('hide'));
   btn.title = `Send to oxdm: ${anchor.href}`;
 
   btn.addEventListener('mouseenter', () => {
@@ -315,11 +337,7 @@ export function showSelectionButton(sel: Selection, urls: string[]) {
   }
   const btn = document.createElement('div');
   btn.className = 'btn';
-  btn.innerHTML = `
-    <span class="body"><img alt="" /><span class="lbl"></span></span>
-    <span class="x" title="dismiss">✕</span>
-  `;
-  (btn.querySelector('img') as HTMLImageElement).src = iconSrc;
+  btn.append(buildBody('', 'lbl'), buildDismiss('dismiss'));
   updateSelectionLabel(urls, btn);
 
   btn.addEventListener('mousedown', (ev) => ev.preventDefault());
