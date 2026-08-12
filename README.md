@@ -166,5 +166,15 @@ Two consequences worth keeping in mind when editing:
 
 ## License
 
+Copyright (C) 2026 jd1378
+
 GNU Affero General Public License v3.0. See [LICENSE](LICENSE). Same
 license as [oxdm](https://github.com/jd1378/oxdm) itself.
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version. It is distributed WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+details.
