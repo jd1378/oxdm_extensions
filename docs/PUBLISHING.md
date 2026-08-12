@@ -135,24 +135,24 @@ dev ID breaks local testing.
 Chrome's categories changed in mid-2023; the pre-2023 *Productivity*
 that download managers used to sit in no longer exists.
 
-### Name
+### Name and summary come from the manifest
 
-Chrome allows 45 characters. `oxdm` alone is accurate but invisible in
-search, so prefer:
+The Chrome Web Store reads the listing's item name and summary out of
+the uploaded package, not the dashboard. They are set in
+`wxt.config.ts` and are read-only once uploaded:
 
-> oxdm Download Manager Integration
+| Manifest field | Becomes | Limit | Current value |
+| --- | --- | --- | --- |
+| `name` | Store item name | 45 | `oxdm Download Manager Integration` (33) |
+| `description` | Store summary | 132 | "Sends browser downloads to the oxdm download manager running on your computer. Requires the oxdm desktop app." (109) |
 
-On AMO the add-on name can stay `oxdm`, since the Download Management
-category already supplies the context.
+To change either, edit `wxt.config.ts` and ship a new version. There is
+no way to edit them on the listing alone.
 
-### Short description
-
-Chrome's summary field allows 132 characters:
-
-> Sends browser downloads to the oxdm download manager running on your
-> computer. Requires the oxdm desktop app.
-
-AMO's summary allows 250:
+The same `name` is the add-on name on AMO and the name shown in the
+browser's own extension manager, so it has to read well in all three
+places. AMO's **Summary** field, by contrast, *is* editable in the
+Developer Hub and allows 250 characters:
 
 > Hands your browser's downloads to oxdm, a download manager that runs
 > on your own computer, together with the cookies and referrer needed
@@ -161,8 +161,8 @@ AMO's summary allows 250:
 
 ### Full description
 
-Works for both stores. AMO renders limited HTML, Chrome plain text, so
-this is kept to plain paragraphs and bullets.
+This one *is* editable in both dashboards. AMO renders limited HTML and
+Chrome plain text, so it is kept to plain paragraphs and bullets.
 
 ```text
 oxdm Integration hands downloads from your browser to oxdm, a download

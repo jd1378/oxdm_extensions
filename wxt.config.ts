@@ -2,9 +2,14 @@ import { defineConfig } from 'wxt';
 
 export default defineConfig({
   manifest: ({ browser }) => ({
-    name: 'oxdm',
+    // The Chrome Web Store takes the listing's item name and summary
+    // straight from here; neither is editable in the dashboard. Keep
+    // `name` within 45 chars and `description` within 132, and say the
+    // desktop app is required, since the summary is often all a user
+    // reads before installing.
+    name: 'oxdm Download Manager Integration',
     description:
-      'Capture browser downloads and direct them to the oxdm desktop app.',
+      'Sends browser downloads to the oxdm download manager running on your computer. Requires the oxdm desktop app.',
     version: '0.1.0',
     permissions: [
       'downloads',
