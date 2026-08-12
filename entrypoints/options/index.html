@@ -7,7 +7,167 @@
     <meta name="manifest.open_in_tab" content="true" />
   </head>
   <body>
-    <div id="app"></div>
+    <!--
+      The page shell is static markup and lives here rather than in a
+      template string assigned to innerHTML: AMO's validator flags every
+      innerHTML assignment. main.ts binds these nodes once and then only
+      reads and updates their state.
+
+      Icon paths are root-relative, which resolves against the
+      extension's own origin on an extension page.
+    -->
+    <div id="app">
+      <div class="shell">
+        <aside class="sidebar">
+          <div class="brand">
+            <img src="/icon-48.png" alt="" />
+            <span>oxdm</span>
+          </div>
+          <div class="section-label">Settings</div>
+          <nav class="nav">
+            <a class="active" data-tab="connection">Connection</a>
+            <a data-tab="handoff">Handoff</a>
+            <a data-tab="detection">Detection</a>
+            <a data-tab="logs">Logs</a>
+            <a data-tab="about">About</a>
+          </nav>
+        </aside>
+
+        <main class="main">
+          <section data-panel="connection" class="panel active">
+            <h1 class="title">Connection</h1>
+            <p class="subtitle">
+              How the extension reaches your oxdm desktop app.
+              <span class="transport-badge" style="margin-left:8px">
+                <span class="dot" id="conn-dot"></span>
+                <span id="conn-text">disconnected</span>
+              </span>
+            </p>
+
+            <section class="card">
+              <h2>Transport</h2>
+              <p class="hint">Native skips the pairing code; the host self-discovers from <span class="kbd">oxdm.db</span>.</p>
+              <div class="field">
+                <label for="transport">Mode</label>
+                <select id="transport">
+                  <option value="auto">Auto (native first, fallback to WebSocket)</option>
+                  <option value="native">Native messaging only</option>
+                  <option value="ws">WebSocket only</option>
+                </select>
+              </div>
+              <div class="field" style="margin-top:var(--space-4)">
+                <label for="pairingCode">Pairing code (WebSocket transport)</label>
+                <input type="text" id="pairingCode" autocomplete="off" placeholder="oxdm1.…" />
+                <div class="help">From <em>oxdm → Settings → Browser integration → Pairing code</em>. Bundles port + token.</div>
+              </div>
+            </section>
+          </section>
+
+          <section data-panel="handoff" class="panel">
+            <h1 class="title">Handoff</h1>
+            <p class="subtitle">What happens the moment a download reaches oxdm.</p>
+
+            <section class="card">
+              <h2>Add dialog</h2>
+              <div class="toggle-row">
+                <label for="interactive">
+                  Show confirmation dialog
+                  <div class="help">
+                    oxdm opens its Add Download dialog, where you set the folder,
+                    filename, category, queue and segments before it starts.
+                    Turn this off to send jobs straight to a queue.
+                  </div>
+                </label>
+                <input type="checkbox" id="interactive" class="switch" />
+              </div>
+            </section>
+
+            <section class="card" id="routing-card">
+              <h2>Queue</h2>
+              <p class="hint">
+                Only used when the Add dialog is off. When it is on, you pick the
+                queue there instead. Multi-link selections always go to oxdm's
+                triage dialog, which has its own queue selector.
+              </p>
+              <div class="field">
+                <label for="defaultQueue">Send to</label>
+                <select id="defaultQueue"></select>
+                <div class="help" id="queues-help">Queue list comes from oxdm; connect to load it.</div>
+              </div>
+            </section>
+          </section>
+
+          <section data-panel="detection" class="panel">
+            <h1 class="title">Detection</h1>
+            <p class="subtitle">In-page affordances near download-ish links.</p>
+
+            <section class="card">
+              <h2>Capture rules</h2>
+              <p class="hint">
+                File types, MIME filters, size threshold, and per-domain skips are set in
+                <em>oxdm → Settings → Browser integration</em>. The extension fetches them on connect.
+              </p>
+            </section>
+
+            <section class="card">
+              <h2>Pinned button</h2>
+              <div class="toggle-row">
+                <label for="injectButton">
+                  Show the oxdm pin next to download links
+                  <div class="help">Turn off to hide the inline button; the right-click menu still works.</div>
+                </label>
+                <input type="checkbox" id="injectButton" class="switch" />
+              </div>
+            </section>
+          </section>
+
+          <section data-panel="logs" class="panel">
+            <h1 class="title">Logs</h1>
+            <p class="subtitle">
+              Recent connection errors and capture rejections. Useful for
+              diagnosing why the extension can't reach oxdm or why a
+              download was refused. Capped at the most recent 100 entries.
+            </p>
+            <section class="card">
+              <div class="logs-header">
+                <h2>Recent entries</h2>
+                <button class="btn btn-compact" id="logs-clear" type="button" title="Clear all log entries">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 6h18"/>
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    <path d="M10 11v6"/>
+                    <path d="M14 11v6"/>
+                  </svg>
+                  <span>Clear</span>
+                </button>
+              </div>
+              <div id="logs-list" class="logs"></div>
+            </section>
+          </section>
+
+          <section data-panel="about" class="panel">
+            <h1 class="title">About</h1>
+            <p class="subtitle">oxdm browser extension: captures downloads and routes them to the oxdm desktop app.</p>
+            <section class="card">
+              <h2>Project</h2>
+              <p class="hint">
+                Source: <a href="https://github.com/jd1378/oxdm_extensions" target="_blank" rel="noopener noreferrer">github.com/jd1378/oxdm_extensions</a>.
+              </p>
+              <p class="hint">
+                Privacy: <a href="https://jd1378.github.io/oxdm_extensions/" target="_blank" rel="noopener noreferrer">privacy policy</a>.
+              </p>
+            </section>
+          </section>
+
+          <div class="footer">
+            <button class="btn primary" id="save">Save changes</button>
+            <button class="btn" id="reset">Reset to defaults</button>
+            <span class="saved" id="saved">Saved.</span>
+          </div>
+        </main>
+      </div>
+    </div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

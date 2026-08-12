@@ -1,5 +1,4 @@
 import './style.css';
-import iconUrl from '/icon-48.png';
 import {
   getSettings,
   setSettings,
@@ -15,214 +14,67 @@ import type { QueueSummary } from '@/src/shared/messages';
 
 const app = document.getElementById('app')!;
 let settings: Settings;
-let connPoll: ReturnType<typeof setInterval> | null = null;
 
-function render() {
-  app.innerHTML = `
-    <div class="shell">
-      <aside class="sidebar">
-        <div class="brand">
-          <img alt="" />
-          <span>oxdm</span>
-        </div>
-        <div class="section-label">Settings</div>
-        <nav class="nav">
-          <a class="active" data-tab="connection">Connection</a>
-          <a data-tab="handoff">Handoff</a>
-          <a data-tab="detection">Detection</a>
-          <a data-tab="logs">Logs</a>
-          <a data-tab="about">About</a>
-        </nav>
-      </aside>
-
-      <main class="main">
-        <section data-panel="connection" class="panel active">
-          <h1 class="title">Connection</h1>
-          <p class="subtitle">
-            How the extension reaches your oxdm desktop app.
-            <span class="transport-badge" style="margin-left:8px">
-              <span class="dot" id="conn-dot"></span>
-              <span id="conn-text">disconnected</span>
-            </span>
-          </p>
-
-          <section class="card">
-            <h2>Transport</h2>
-            <p class="hint">Native skips the pairing code; the host self-discovers from <span class="kbd">oxdm.db</span>.</p>
-            <div class="field">
-              <label for="transport">Mode</label>
-              <select id="transport">
-                <option value="auto">Auto (native first, fallback to WebSocket)</option>
-                <option value="native">Native messaging only</option>
-                <option value="ws">WebSocket only</option>
-              </select>
-            </div>
-            <div class="field" style="margin-top:var(--space-4)">
-              <label for="pairingCode">Pairing code (WebSocket transport)</label>
-              <input type="text" id="pairingCode" autocomplete="off" placeholder="oxdm1.…" />
-              <div class="help">From <em>oxdm → Settings → Browser integration → Pairing code</em>. Bundles port + token.</div>
-            </div>
-          </section>
-
-        </section>
-
-        <section data-panel="handoff" class="panel">
-          <h1 class="title">Handoff</h1>
-          <p class="subtitle">What happens the moment a download reaches oxdm.</p>
-
-          <section class="card">
-            <h2>Add dialog</h2>
-            <div class="toggle-row">
-              <label for="interactive">
-                Ask before downloading
-                <div class="help">
-                  oxdm opens its Add Download dialog, where you set the folder,
-                  filename, category, queue and segments before it starts.
-                  Turn this off to send jobs straight to a queue.
-                </div>
-              </label>
-              <input type="checkbox" id="interactive" class="switch" />
-            </div>
-          </section>
-
-          <section class="card" id="routing-card">
-            <h2>Queue</h2>
-            <p class="hint">
-              Only used when the Add dialog is off. When it is on, you pick the
-              queue there instead. Multi-link selections always go to oxdm's
-              triage dialog, which has its own queue selector.
-            </p>
-            <div class="field">
-              <label for="defaultQueue">Send to</label>
-              <select id="defaultQueue"></select>
-              <div class="help" id="queues-help">Queue list comes from oxdm; connect to load it.</div>
-            </div>
-          </section>
-        </section>
-
-        <section data-panel="detection" class="panel">
-          <h1 class="title">Detection</h1>
-          <p class="subtitle">In-page affordances near download-ish links.</p>
-
-          <section class="card">
-            <h2>Capture rules</h2>
-            <p class="hint">
-              File types, MIME filters, size threshold, and per-domain skips are set in
-              <em>oxdm → Settings → Browser integration</em>. The extension fetches them on connect.
-            </p>
-          </section>
-
-          <section class="card">
-            <h2>Pinned button</h2>
-            <div class="toggle-row">
-              <label for="injectButton">
-                Show the oxdm pin next to download links
-                <div class="help">Turn off to hide the inline button; the right-click menu still works.</div>
-              </label>
-              <input type="checkbox" id="injectButton" class="switch" />
-            </div>
-          </section>
-        </section>
-
-        <section data-panel="logs" class="panel">
-          <h1 class="title">Logs</h1>
-          <p class="subtitle">
-            Recent connection errors and capture rejections. Useful for
-            diagnosing why the extension can't reach oxdm or why a
-            download was refused. Capped at the most recent 100 entries.
-          </p>
-          <section class="card">
-            <div class="logs-header">
-              <h2>Recent entries</h2>
-              <button class="btn btn-compact" id="logs-clear" type="button" title="Clear all log entries">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M3 6h18"/>
-                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                  <path d="M10 11v6"/>
-                  <path d="M14 11v6"/>
-                </svg>
-                <span>Clear</span>
-              </button>
-            </div>
-            <div id="logs-list" class="logs"></div>
-          </section>
-        </section>
-
-        <section data-panel="about" class="panel">
-          <h1 class="title">About</h1>
-          <p class="subtitle">oxdm browser extension: captures downloads and routes them to the oxdm desktop app.</p>
-          <section class="card">
-            <h2>Project</h2>
-            <p class="hint">
-              Source: <a href="https://github.com/jd1378/oxdm_extensions" target="_blank">github.com/jd1378/oxdm_extensions</a>.
-            </p>
-          </section>
-        </section>
-
-        <div class="footer">
-          <button class="btn primary" id="save">Save changes</button>
-          <button class="btn" id="reset">Reset to defaults</button>
-          <span class="saved" id="saved">Saved.</span>
-        </div>
-      </main>
-    </div>
-  `;
-
-  (app.querySelector('.brand img') as HTMLImageElement).src = iconUrl;
-
+/**
+ * Push the stored settings into the form controls. The markup itself is
+ * static and lives in index.html, so this only ever sets values, never
+ * rebuilds nodes. Safe to call repeatedly (Reset does).
+ */
+function syncForm() {
   set('transport', settings.transport);
   set('pairingCode', settings.pairingCode);
+  (document.getElementById('injectButton') as HTMLInputElement).checked =
+    settings.injectButton;
+  (document.getElementById('interactive') as HTMLInputElement).checked =
+    settings.interactive;
   syncPairingDisabled();
-  const transportEl = document.getElementById('transport') as HTMLSelectElement;
-  transportEl.addEventListener('change', syncPairingDisabled);
-  (document.getElementById('injectButton') as HTMLInputElement).checked = settings.injectButton;
-  const interactiveEl = document.getElementById('interactive') as HTMLInputElement;
-  interactiveEl.checked = settings.interactive;
-  interactiveEl.addEventListener('change', syncRoutingVisibility);
   syncRoutingVisibility();
   renderQueueOptions(null);
-  void loadQueues();
+}
+
+/**
+ * Wire every listener exactly once. Previously the whole page was
+ * rebuilt on each render, which re-bound everything and made Reset
+ * stack a second connection poller.
+ */
+function bindOnce() {
+  document
+    .getElementById('transport')!
+    .addEventListener('change', syncPairingDisabled);
+  document
+    .getElementById('interactive')!
+    .addEventListener('change', syncRoutingVisibility);
 
   for (const a of app.querySelectorAll<HTMLAnchorElement>('.nav a')) {
     a.addEventListener('click', (ev) => {
       ev.preventDefault();
-      const tab = a.dataset.tab!;
-      app.querySelectorAll('.nav a').forEach((el) => el.classList.remove('active'));
-      a.classList.add('active');
-      app.querySelectorAll<HTMLElement>('.panel').forEach((el) => {
-        el.classList.toggle('active', el.dataset.panel === tab);
-      });
-      history.replaceState(null, '', `#${tab}`);
+      showTab(a.dataset.tab!);
     });
-  }
-
-  const fromHash = location.hash.replace('#', '');
-  if (fromHash) {
-    const a = app.querySelector<HTMLAnchorElement>(`.nav a[data-tab="${fromHash}"]`);
-    a?.click();
   }
 
   document.getElementById('save')!.addEventListener('click', save);
   document.getElementById('reset')!.addEventListener('click', async () => {
     await setSettings(DEFAULTS);
     settings = await getSettings();
-    render();
+    syncForm();
+    void loadQueues();
     flashSaved();
   });
 
-  refreshConnection();
-  // render() runs again on Reset — without clearing, each pass would
-  // stack another poller on the same page.
-  if (connPoll !== null) clearInterval(connPoll);
-  connPoll = setInterval(refreshConnection, 1500);
-
-  const logsClear = document.getElementById('logs-clear');
-  logsClear?.addEventListener('click', async () => {
+  document.getElementById('logs-clear')!.addEventListener('click', async () => {
     await browser.runtime.sendMessage({ kind: 'clear-logs' });
     renderLogs([]);
   });
-  void refreshLogs();
+}
+
+function showTab(tab: string) {
+  for (const el of app.querySelectorAll<HTMLElement>('.nav a')) {
+    el.classList.toggle('active', el.dataset.tab === tab);
+  }
+  for (const el of app.querySelectorAll<HTMLElement>('.panel')) {
+    el.classList.toggle('active', el.dataset.panel === tab);
+  }
+  history.replaceState(null, '', `#${tab}`);
 }
 
 /** The queue picker is inert while oxdm's Add dialog is doing the
@@ -429,8 +281,21 @@ function flashSaved() {
 
 (async () => {
   settings = await getSettings();
-  render();
+  syncForm();
+  bindOnce();
+
+  // Deep link straight to a tab, e.g. options.html#logs.
+  const fromHash = location.hash.replace('#', '');
+  if (fromHash && app.querySelector(`.nav a[data-tab="${CSS.escape(fromHash)}"]`)) {
+    showTab(fromHash);
+  }
+
+  void loadQueues();
+  void refreshLogs();
+  refreshConnection();
+  setInterval(refreshConnection, 1500);
+
   // Live-update the log panel whenever a new entry is pushed by the
-  // background. Cheap: render only runs while the Options tab is open.
+  // background. Cheap: only runs while the Options tab is open.
   onLogsChange((logs) => renderLogs(logs));
 })();

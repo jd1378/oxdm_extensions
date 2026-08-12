@@ -7,7 +7,58 @@
     <meta name="manifest.type" content="browser_action" />
   </head>
   <body>
-    <div id="app"></div>
+    <!--
+      The markup lives here rather than in a template string assigned to
+      innerHTML: AMO's validator flags every innerHTML assignment, and
+      static markup belongs in a document anyway. main.ts only reads
+      these nodes and updates their state.
+
+      Icon paths are root-relative, which resolves against the
+      extension's own origin on an extension page.
+    -->
+    <div id="app">
+      <div class="header">
+        <div class="logo"><img src="/icon-48.png" alt="" /></div>
+        <div>
+          <div class="brand">oxdm</div>
+          <div class="status err" id="status">
+            <span class="dot"></span><span id="status-text">not connected</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" data-action="toggle-auto-capture">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2v14"/><path d="m6 12 6 6 6-6"/><path d="M4 22h16"/>
+        </svg>
+        <span class="label">Auto capture downloads</span>
+        <button class="switch" data-switch="autoCapture" aria-label="toggle"></button>
+      </div>
+
+      <div class="row" data-action="toggle-interactive">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span class="label">Show confirmation dialog</span>
+        <button class="switch" data-switch="interactive" aria-label="toggle"></button>
+      </div>
+
+      <div class="row" data-action="toggle-inject">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+        </svg>
+        <span class="label">Show pin on detected links</span>
+        <button class="switch" data-switch="injectButton" aria-label="toggle"></button>
+      </div>
+
+      <div class="row" data-action="open-options">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09A1.65 1.65 0 0 0 9 4.09V4a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V10a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span class="label">Open full settings</span>
+      </div>
+    </div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
