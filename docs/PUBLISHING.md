@@ -169,15 +169,23 @@ the uploaded package, not the dashboard. They are set in
 
 | Manifest field | Becomes | Limit | Current value |
 | --- | --- | --- | --- |
-| `name` | Store item name | 45 | `oxdm Download Manager Integration` (33) |
+| `name` | Store item name | **30** | `oxdm Download Manager Bridge` (28) |
 | `description` | Store summary | 132 | "Sends browser downloads to the oxdm download manager running on your computer. Requires the oxdm desktop app." (109) |
+
+The 30-character cap on `name` is AMO's, and it is the one that binds:
+Chrome allows 45, but a single manifest feeds both stores, so anything
+longer than 30 is rejected at Firefox submission. AMO reports this as
+*"Ensure this value has at most 30 characters"*.
 
 To change either, edit `wxt.config.ts` and ship a new version. There is
 no way to edit them on the listing alone.
 
 The same `name` is the add-on name on AMO and the name shown in the
 browser's own extension manager, so it has to read well in all three
-places. AMO's **Summary** field, by contrast, *is* editable in the
+places, inside 30 characters. "Bridge" is doing real work in that name:
+it says the extension connects to something else, which is the single
+most important thing for a user to grasp before installing, given it
+does nothing without the desktop app. AMO's **Summary** field, by contrast, *is* editable in the
 Developer Hub and allows 250 characters:
 
 > Hands your browser's downloads to oxdm, a download manager that runs
