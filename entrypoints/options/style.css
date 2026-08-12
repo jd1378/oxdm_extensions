@@ -259,6 +259,9 @@ input[type='password']::placeholder { color: var(--fg-4); }
   opacity: 0; transition: opacity .2s;
 }
 .saved.show { opacity: 1; }
+/* Success green would read as "done" on a message that is really an
+   instruction, e.g. Reset telling you the form is filled but unsaved. */
+.saved.info { color: var(--fg-2); font-weight: 500; }
 
 .kbd {
   display: inline-block;

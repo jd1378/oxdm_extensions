@@ -16,20 +16,30 @@ const app = document.getElementById('app')!;
 let settings: Settings;
 
 /**
- * Push the stored settings into the form controls. The markup itself is
- * static and lives in index.html, so this only ever sets values, never
- * rebuilds nodes. Safe to call repeatedly (Reset does).
+ * Push a settings object into the form controls. The markup is static
+ * and lives in index.html, so this only ever sets values.
+ *
+ * Takes the source explicitly because Reset fills the form from
+ * `DEFAULTS` *without* persisting them: nothing on this page is stored
+ * until Save, so a mis-clicked Reset costs nothing and can be undone by
+ * reloading.
  */
-function syncForm() {
-  set('transport', settings.transport);
-  set('pairingCode', settings.pairingCode);
+function syncForm(from: Settings = settings) {
+  set('transport', from.transport);
+  set('pairingCode', from.pairingCode);
   (document.getElementById('injectButton') as HTMLInputElement).checked =
-    settings.injectButton;
+    from.injectButton;
   (document.getElementById('interactive') as HTMLInputElement).checked =
-    settings.interactive;
+    from.interactive;
+  const sel = document.getElementById('defaultQueue') as HTMLSelectElement;
+  // First paint has no options yet; later calls keep whatever oxdm's
+  // queue list already put there.
+  if (!sel.options.length) renderQueueOptions(null);
+  sel.value = [...sel.options].some((o) => o.value === from.defaultQueue)
+    ? from.defaultQueue
+    : '';
   syncPairingDisabled();
   syncRoutingVisibility();
-  renderQueueOptions(null);
 }
 
 /**
@@ -53,12 +63,14 @@ function bindOnce() {
   }
 
   document.getElementById('save')!.addEventListener('click', save);
-  document.getElementById('reset')!.addEventListener('click', async () => {
-    await setSettings(DEFAULTS);
-    settings = await getSettings();
-    syncForm();
-    void loadQueues();
-    flashSaved();
+  document.getElementById('reset')!.addEventListener('click', () => {
+    // Fills the controls only. Storage is untouched until Save, which
+    // keeps Save as the single point where anything is committed.
+    syncForm(DEFAULTS);
+    flash('Defaults filled in. Choose Save changes to apply them.', {
+      ms: 4000,
+      info: true,
+    });
   });
 
   document.getElementById('logs-clear')!.addEventListener('click', async () => {
@@ -96,11 +108,17 @@ function syncRoutingVisibility() {
 function renderQueueOptions(queues: QueueSummary[] | null) {
   const sel = document.getElementById('defaultQueue') as HTMLSelectElement | null;
   if (!sel) return;
+  // Once the control is on screen it, not storage, holds the pending
+  // choice. Reading it back means a queue list arriving late (or a
+  // reconnect) cannot quietly undo an edit the user has not saved yet.
+  const painted = sel.options.length > 0;
+  const chosenId = painted ? sel.value : settings.defaultQueue;
+  const chosenName = painted
+    ? (sel.selectedOptions[0]?.textContent ?? '').trim()
+    : settings.defaultQueueName;
   const list =
     queues ??
-    (settings.defaultQueue
-      ? [{ id: settings.defaultQueue, name: settings.defaultQueueName || 'saved queue' }]
-      : []);
+    (chosenId ? [{ id: chosenId, name: chosenName || 'saved queue' }] : []);
   // Built as DOM rather than markup: queue names come from oxdm, and
   // `textContent` cannot be talked into being markup the way an escaped
   // string concatenated into innerHTML can.
@@ -116,9 +134,7 @@ function renderQueueOptions(queues: QueueSummary[] | null) {
   // Picking Main explicitly here would override those rules.
   addOption('', 'Let oxdm decide (category rules, else Main)');
   for (const q of list) addOption(q.id, q.name);
-  sel.value = list.some((q) => q.id === settings.defaultQueue)
-    ? settings.defaultQueue
-    : '';
+  sel.value = list.some((q) => q.id === chosenId) ? chosenId : '';
 }
 
 async function loadQueues() {
@@ -137,11 +153,12 @@ async function loadQueues() {
     return;
   }
   if (help) help.textContent = `${queues.length} queue(s) from oxdm.`;
-  // A queue deleted in oxdm should not stay selectable here.
-  if (settings.defaultQueue && !queues.some((q) => q.id === settings.defaultQueue)) {
-    await setSettings({ defaultQueue: '', defaultQueueName: '' });
-    settings = await getSettings();
-  }
+  // A queue deleted in oxdm simply stops being offered: repainting the
+  // list drops it, and the control falls back to "let oxdm decide".
+  // Deliberately not written to storage here, so Save stays the only
+  // thing on this page that persists anything. Until the user saves,
+  // the stale id is harmless: oxdm ignores an unknown queue and the
+  // job lands in Main.
   renderQueueOptions(queues);
 }
 
@@ -273,10 +290,25 @@ function syncPairingDisabled() {
     : 'oxdm1.…';
 }
 
-function flashSaved() {
+let flashTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Brief footer message. Reset and Save say different things, because
+ * "Saved." after a Reset that stored nothing would be a plain lie.
+ * Reset's wording is left up longer, since it is an instruction.
+ */
+function flash(message: string, opts: { ms?: number; info?: boolean } = {}) {
+  const { ms = 1500, info = false } = opts;
   const el = document.getElementById('saved')!;
+  el.textContent = message;
+  el.classList.toggle('info', info);
   el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 1500);
+  if (flashTimer) clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function flashSaved() {
+  flash('Saved.');
 }
 
 (async () => {
