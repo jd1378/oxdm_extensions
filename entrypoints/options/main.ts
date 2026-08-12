@@ -48,11 +48,11 @@ function render() {
 
           <section class="card">
             <h2>Transport</h2>
-            <p class="hint">Native skips the pairing code — host self-discovers from <span class="kbd">oxdm.db</span>.</p>
+            <p class="hint">Native skips the pairing code; the host self-discovers from <span class="kbd">oxdm.db</span>.</p>
             <div class="field">
               <label for="transport">Mode</label>
               <select id="transport">
-                <option value="auto">Auto — native first, fallback to WebSocket</option>
+                <option value="auto">Auto (native first, fallback to WebSocket)</option>
                 <option value="native">Native messaging only</option>
                 <option value="ws">WebSocket only</option>
               </select>
@@ -88,7 +88,7 @@ function render() {
           <section class="card" id="routing-card">
             <h2>Queue</h2>
             <p class="hint">
-              Only used when the Add dialog is off — when it is on, you pick the
+              Only used when the Add dialog is off. When it is on, you pick the
               queue there instead. Multi-link selections always go to oxdm's
               triage dialog, which has its own queue selector.
             </p>
@@ -151,7 +151,7 @@ function render() {
 
         <section data-panel="about" class="panel">
           <h1 class="title">About</h1>
-          <p class="subtitle">oxdm browser extension — capture downloads and route them to the oxdm desktop app.</p>
+          <p class="subtitle">oxdm browser extension: captures downloads and routes them to the oxdm desktop app.</p>
           <section class="card">
             <h2>Project</h2>
             <p class="hint">
@@ -276,7 +276,7 @@ async function loadQueues() {
     queues = null;
   }
   if (!queues) {
-    if (help) help.textContent = 'Could not reach oxdm — showing the saved choice.';
+    if (help) help.textContent = 'Could not reach oxdm; showing the saved choice.';
     return;
   }
   if (help) help.textContent = `${queues.length} queue(s) from oxdm.`;

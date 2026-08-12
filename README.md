@@ -4,40 +4,40 @@ Cross-browser WebExtension that captures downloads and forwards them to
 the [oxdm](https://github.com/jd1378/oxdm) desktop app over its
 loopback WebSocket bridge.
 
-Built with [WXT](https://wxt.dev) — single TypeScript codebase, one
+Built with [WXT](https://wxt.dev): single TypeScript codebase, one
 config, three build targets (Chromium MV3, Firefox MV2, Safari MV3).
 
 ## Features
 
-- **Toolbar toggle** — click the action icon to switch auto-capture on
+- **Toolbar toggle**: click the action icon to switch auto-capture on
   / off; an `off` badge marks the disabled state.
-- **Download interception** — when auto-capture is on,
+- **Download interception**: when auto-capture is on,
   `chrome.downloads.onCreated` is cancelled + erased, and the URL is
   forwarded to oxdm with cookies, referrer, UA, and any
   `Content-Disposition` filename hint. Switching it off scopes the
-  extension to explicit sends only — the connection, context menu and
+  extension to explicit sends only. The connection, context menu and
   in-page pin all keep working, since someone who wants the browser to
   handle its own downloads still wants "Download with oxdm" on a
   right-click.
-- **In-page button injection** — periodic viewport scan (default 5 s,
+- **In-page button injection**: periodic viewport scan (default 5 s,
   stops on `load`, runs once more) finds anchors with a `download`
   attribute or downloadable URL extensions / paths and pins an oxdm
   button next to them. Each pin has a `✕` to dismiss. All injected DOM
   lives in a Shadow-DOM host so page CSS never bleeds in.
-- **Hover triggers** — debounced `mouseover` re-scans the hovered
+- **Hover triggers**: debounced `mouseover` re-scans the hovered
   anchor / button so dynamic UIs (single-page apps that render links on
   hover) still get the button.
-- **Selection triggers** — `selectionchange` extracts URLs from the
+- **Selection triggers**: `selectionchange` extracts URLs from the
   selected text. One URL → sent as a `capture` (dialog or not, per the
   handoff setting). Multiple URLs → forwarded as a `batch_capture`,
   oxdm shows its own triage dialog.
-- **Context menu** — single "Download with oxdm" item; title rewrites
+- **Context menu**: single "Download with oxdm" item; title rewrites
   with the count for link / selection / page contexts.
-- **Capture rules** — file types, MIME filters, size threshold, and
+- **Capture rules**: file types, MIME filters, size threshold, and
   per-domain skips live in oxdm (Settings → Browser integration). The
   extension fetches them via `get_capture_rules` on connect and caches
   the result; oxdm is the single source of truth.
-- **Handoff mode** — *Ask before downloading* (default on) sends
+- **Handoff mode**: *Ask before downloading* (default on) sends
   `interactive: true`, so oxdm opens its Add Download dialog and owns
   folder / filename / category / queue / segments. Turn it off and jobs
   queue and start immediately; only then does the extension pick a
@@ -53,7 +53,7 @@ pnpm build:firefox   # Firefox MV2  → .output/firefox-mv2/
 pnpm build:safari    # Safari MV3   → .output/safari-mv3/  (untested on Linux)
 pnpm zip             # .output/oxdm-0.1.0-chrome.zip
 pnpm zip:firefox     # .output/oxdm-0.1.0-firefox.zip
-pnpm test            # vitest — heuristics + URL extraction
+pnpm test            # vitest: heuristics + URL extraction
 pnpm compile         # tsc --noEmit
 ```
 
@@ -125,7 +125,7 @@ format. The extension sends:
 |---------------------|-----------------------------------------------|
 | `capture`           | single-URL send (intercept, pin, ctx)         |
 | `batch_capture`     | multi-URL selection / page-link send          |
-| `get_capture_rules` | on connect — oxdm owns the capture filters    |
+| `get_capture_rules` | on connect; oxdm owns the capture filters     |
 | `list_queues`       | Options → Handoff, to fill the queue picker   |
 
 `evaluate_url` is defined by the protocol but deliberately unused: both
@@ -149,7 +149,7 @@ browser and what oxdm cannot see:
 | Cookie jar, real User-Agent, page referrer          | Filename resolution + numbering, `Content-Disposition` |
 | In-page detection (pin, selection, context menu)    | Save folder, category classification, segments         |
 | Applying the capture rules oxdm authored            | Authoring those rules (Settings → Browser integration) |
-| Rejecting loopback / RFC1918 / link-local URLs      | Scheme guard only — LAN is allowed for token holders   |
+| Rejecting loopback / RFC1918 / link-local URLs      | Scheme guard only; LAN is allowed for token holders    |
 | Whether the Add dialog opens (`interactive`)        | The dialog itself, and every choice inside it          |
 | Queue only when no dialog will open                 | Per-category queue rules, Main fallback, schedulers    |
 
@@ -157,9 +157,14 @@ Two consequences worth keeping in mind when editing:
 
 - `isPublicHttpUrl` is not backed by a second gate. oxdm's
   `guard_public_http_url` checks the scheme and nothing else, on
-  purpose — a token-holding script is trusted to pull from a NAS. For
+  purpose: a token-holding script is trusted to pull from a NAS. For
   page-driven captures the extension is the only thing standing between
   a hostile page and the user's intranet.
 - Sending an explicit `queue` overrides oxdm's per-category routing,
   which is why it is sent only when the user turned the dialog off and
   chose a specific queue.
+
+## License
+
+GNU Affero General Public License v3.0. See [LICENSE](LICENSE). Same
+license as [oxdm](https://github.com/jd1378/oxdm) itself.

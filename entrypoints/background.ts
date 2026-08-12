@@ -64,7 +64,7 @@ async function init() {
       void pushLog(
         'info',
         'ipc',
-        `reverting transport to "auto" — pinned "${e.transport}" failed before verification`,
+        `reverting transport to "auto": pinned "${e.transport}" failed before verification`,
       );
       void setSettings({ transport: 'auto', transportPinnedByAuto: false });
     }
@@ -91,7 +91,7 @@ async function init() {
     }
     lastSyncedState = cs;
     browser.action.setTitle({
-      title: `oxdm — ${cs}${settings.autoCapture ? '' : ', auto-capture off'}`,
+      title: `oxdm: ${cs}${settings.autoCapture ? '' : ', auto-capture off'}`,
     });
     // Tell every content script whether the host is reachable so they
     // can show / hide injected affordances. Best-effort broadcast.
@@ -184,7 +184,7 @@ async function syncRules() {
       await pushLog(
         'warn',
         'rules',
-        'oxdm did not return capture rules — your oxdm build may be older than this extension; using cached rules',
+        'oxdm did not return capture rules. Your oxdm build may be older than this extension; using cached rules',
       );
     }
     return;

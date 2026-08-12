@@ -334,7 +334,7 @@ export class OxdmClient {
       // Otherwise surface the close code verbatim.
       const tokenRejected = awaitingAuth;
       const reason = tokenRejected
-        ? 'token rejected by oxdm — paste a fresh pairing code from oxdm Settings'
+        ? 'token rejected by oxdm; paste a fresh pairing code from oxdm Settings'
         : ev.reason ||
           `socket closed (code ${ev.code}${ev.wasClean ? '' : ', abnormal'})`;
       this.impl = null;
@@ -496,7 +496,7 @@ function classifyNativePhase(
   }
   if (notFound || elapsedMs < 20) {
     return {
-      phase: `discovery (${elapsedMs} ms — process never spawned)`,
+      phase: `discovery (${elapsedMs} ms, process never spawned)`,
       narrowed: [
         'The browser could not locate or load the native-messaging manifest. The shim binary was never executed.',
         'Verify the manifest file exists in this browser\'s NativeMessagingHosts directory and lists this extension in allowed_origins / allowed_extensions.',
@@ -505,7 +505,7 @@ function classifyNativePhase(
   }
   if (exited && elapsedMs < 250) {
     return {
-      phase: `spawn (${elapsedMs} ms — process exited almost immediately)`,
+      phase: `spawn (${elapsedMs} ms, process exited almost immediately)`,
       narrowed: [
         'The shim binary was launched but exited before it could begin forwarding. Likely cause: the "path" in the manifest points at a missing/non-executable binary, or the binary itself rejected its launch arguments.',
         'Confirm the path field of the manifest with: cat ~/.config/<browser>/NativeMessagingHosts/io.github.jd1378.oxdm.host.json',
@@ -513,7 +513,7 @@ function classifyNativePhase(
     };
   }
   return {
-    phase: `bootstrap (${elapsedMs} ms — shim ran briefly then exited before being usable)`,
+    phase: `bootstrap (${elapsedMs} ms, shim ran briefly then exited before being usable)`,
     narrowed: [
       'The shim spawned and ran long enough to do work, but exited before the session was confirmed.',
       'Common causes: oxdm desktop app is not running (shim cannot reach the loopback WebSocket bridge), or oxdm.db is missing / unreadable / lacks settings.ext_token.',
@@ -543,7 +543,7 @@ function buildNativeErrorReason(
       '',
       ...phaseLines,
       'The oxdm-native-host binary launched but exited before staying connected. Common causes:',
-      '  1. The oxdm desktop app is not running — the shim exits with code 1 when it cannot reach the WebSocket bridge.',
+      '  1. The oxdm desktop app is not running. The shim exits with code 1 when it cannot reach the WebSocket bridge.',
       '     Fix: start oxdm. The shim will be respawned on the next request.',
       '  2. oxdm.db is missing or unreadable for the user that owns the browser process.',
       '     The shim reads port + token from ~/.local/share/oxdm/oxdm.db (Linux) /',
@@ -576,7 +576,7 @@ function buildNativeErrorReason(
     '  3. The "path" field in the manifest points at a missing or non-executable file.',
     '     Confirm oxdm-native-host is on disk where the manifest says, and is chmod +x.',
     '  4. Manifest file mode does not allow the browser to read it (e.g. dropped into root-owned dir).',
-    '     Per-user dirs (~/.config/<browser>/NativeMessagingHosts) avoid this — install as the same user that runs the browser.',
+    '     Per-user dirs (~/.config/<browser>/NativeMessagingHosts) avoid this; install as the same user that runs the browser.',
     '  5. On Flatpak/Snap browsers, the sandbox cannot reach the host binary even when the manifest is in place.',
     '     For Flatpak: expose only the host binary, not the full filesystem:',
     '       flatpak override --user --filesystem=/usr/local/bin/oxdm-native-host:ro <flatpak-id>',

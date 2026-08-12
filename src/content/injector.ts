@@ -189,7 +189,7 @@ function showPin(anchor: HTMLAnchorElement) {
     <span class="x" title="hide">✕</span>
   `;
   (btn.querySelector('img') as HTMLImageElement).src = iconSrc;
-  btn.title = `Send to oxdm — ${anchor.href}`;
+  btn.title = `Send to oxdm: ${anchor.href}`;
 
   btn.addEventListener('mouseenter', () => {
     if (pinHideTimer) {

@@ -1,7 +1,8 @@
 {
   "name": "oxdm-extension",
-  "description": "oxdm browser integration — capture downloads and route them to the oxdm desktop app",
+  "description": "oxdm browser integration: capture downloads and route them to the oxdm desktop app",
   "private": true,
+  "license": "AGPL-3.0-only",
   "version": "0.1.0",
   "type": "module",
   "scripts": {

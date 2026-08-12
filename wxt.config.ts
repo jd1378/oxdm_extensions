@@ -35,7 +35,7 @@ export default defineConfig({
     // `theme_icons` only fires for theme-extension installs, not the
     // default dark UI, which made two-variant artwork misleading.
     action: {
-      default_title: 'oxdm — click to toggle',
+      default_title: 'oxdm: click to toggle',
       default_icon: {
         '16': 'icon-16.png',
         '32': 'icon-32.png',
