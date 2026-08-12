@@ -5,7 +5,7 @@ the [oxdm](https://github.com/jd1378/oxdm) desktop app over its
 loopback WebSocket bridge.
 
 Built with [WXT](https://wxt.dev): single TypeScript codebase, one
-config, three build targets (Chromium MV3, Firefox MV2, Safari MV3).
+config, three build targets (Chromium MV3, Firefox MV2, Safari MV2).
 
 ## Features
 
@@ -50,9 +50,10 @@ config, three build targets (Chromium MV3, Firefox MV2, Safari MV3).
 pnpm install
 pnpm build           # Chromium MV3 → .output/chrome-mv3/
 pnpm build:firefox   # Firefox MV2  → .output/firefox-mv2/
-pnpm build:safari    # Safari MV3   → .output/safari-mv3/  (untested on Linux)
-pnpm zip             # .output/oxdm-0.1.0-chrome.zip
-pnpm zip:firefox     # .output/oxdm-0.1.0-firefox.zip
+pnpm build:safari    # Safari MV2   → .output/safari-mv2/  (untested on Linux)
+pnpm zip             # .output/oxdm-extension-0.1.0-chrome.zip
+pnpm zip:firefox     # + sources zip, required by AMO
+pnpm zip:safari      # .output/oxdm-extension-0.1.0-safari.zip
 pnpm test            # vitest: heuristics + URL extraction
 pnpm compile         # tsc --noEmit
 ```
@@ -163,6 +164,22 @@ Two consequences worth keeping in mind when editing:
 - Sending an explicit `queue` overrides oxdm's per-category routing,
   which is why it is sent only when the user turned the dialog off and
   chose a specific queue.
+
+## Publishing
+
+Release process, store submission steps and the permission
+justifications: [docs/PUBLISHING.md](docs/PUBLISHING.md).
+
+Tagging alone builds nothing. Publish a GitHub *pre-release* and
+`.github/workflows/release.yml` attaches the Chromium, Firefox, Safari
+and AMO-sources zips plus `SHA256SUMS.txt`; promote it to a full release
+by hand once you have checked them.
+
+## Privacy
+
+The extension collects nothing and talks to no server: the only network
+destination is `127.0.0.1` on your own machine. Full statement in
+[site/index.html](site/index.html), published to GitHub Pages.
 
 ## License
 

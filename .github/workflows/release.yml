@@ -1,0 +1,93 @@
+name: Release artifacts
+
+# Fires when a release is published. Publishing a *prerelease* also
+# emits `published`, which is the intended entry point: tag, draft a
+# prerelease, let this attach the artifacts, check them, then promote it
+# to a full release by hand. Promoting emits `released`, not
+# `published`, so this does not run a second time and cannot clobber
+# assets you have already verified.
+on:
+  release:
+    types: [published]
+  # Build without touching any release, to check a change to this file.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # A tag that disagrees with the manifest ships a zip whose version
+      # the stores will reject on upload, or worse, silently accept as
+      # the wrong release. Fail here instead.
+      - name: Check tag matches package version
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          pkg=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$pkg" ] && [ "$TAG" != "$pkg" ]; then
+            echo "::error::tag '$TAG' does not match package.json version '$pkg'"
+            exit 1
+          fi
+          echo "tag '$TAG' matches version '$pkg'"
+
+      - run: pnpm compile
+
+      - run: pnpm test
+
+      # Each target writes its own zip into .output/. The Firefox run
+      # additionally emits the sources zip that AMO requires for review
+      # of bundled code.
+      - name: Build and zip every target
+        run: |
+          pnpm zip
+          pnpm zip:firefox
+          pnpm zip:safari
+
+      - name: Generate checksums
+        working-directory: .output
+        run: |
+          sha256sum *.zip | tee SHA256SUMS.txt
+
+      - name: List artifacts
+        working-directory: .output
+        run: ls -lh *.zip SHA256SUMS.txt
+
+      # On a real release, attach everything. --clobber lets a failed run
+      # be retried without deleting assets by hand first.
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release upload "$TAG" \
+            .output/*.zip \
+            .output/SHA256SUMS.txt \
+            --clobber
+
+      # On a manual run there is no release to attach to, so keep the
+      # output as a workflow artifact for inspection.
+      - name: Upload as workflow artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-zips
+          path: |
+            .output/*.zip
+            .output/SHA256SUMS.txt
+          if-no-files-found: error

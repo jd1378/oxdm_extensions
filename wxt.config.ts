@@ -12,7 +12,9 @@ export default defineConfig({
       'tabs',
       'contextMenus',
       'cookies',
-      'activeTab',
+      // No `activeTab`: `<all_urls>` below already grants everything it
+      // would, so it is one more permission to justify at store review
+      // for no capability.
       'notifications',
       'nativeMessaging',
     ],
@@ -34,8 +36,10 @@ export default defineConfig({
     // so no theme variant or runtime swap is needed. Chrome's
     // `theme_icons` only fires for theme-extension installs, not the
     // default dark UI, which made two-variant artwork misleading.
+    // No `default_title` here: WXT derives it from the popup's
+    // <title>, so anything set here is silently discarded. The live
+    // tooltip is written by `setTitle` in background.ts.
     action: {
-      default_title: 'oxdm: click to toggle',
       default_icon: {
         '16': 'icon-16.png',
         '32': 'icon-32.png',

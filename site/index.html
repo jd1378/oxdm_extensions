@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Privacy Policy: oxdm browser extension</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --surface: #f6f7f9;
+    --fg: #16181d;
+    --fg-2: #4a5160;
+    --border: #dfe3e9;
+    --accent: #2563eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101318;
+      --surface: #171b22;
+      --fg: #e9ecf1;
+      --fg-2: #a2abbb;
+      --border: #262c36;
+      --accent: #6aa2ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 3rem 1.25rem 5rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 .35rem; }
+  h2 { font-size: 1.2rem; margin: 2.5rem 0 .6rem; }
+  h3 { font-size: 1rem; margin: 1.6rem 0 .4rem; }
+  .meta { color: var(--fg-2); font-size: .9rem; margin: 0 0 2rem; }
+  .lede {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 1rem 1.15rem;
+    margin: 0 0 1rem;
+  }
+  .lede p { margin: 0; }
+  ul { padding-left: 1.25rem; }
+  li { margin: .35rem 0; }
+  code {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: .1em .35em;
+    font-size: .9em;
+  }
+  table { border-collapse: collapse; width: 100%; margin: .75rem 0; font-size: .94rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--fg-2); font-weight: 600; }
+  a { color: var(--accent); }
+  footer { margin-top: 3.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border); color: var(--fg-2); font-size: .9rem; }
+  .wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Privacy Policy</h1>
+<p class="meta">oxdm browser extension &middot; last updated 12 August 2026</p>
+
+<div class="lede">
+  <p><strong>The extension collects nothing.</strong> There are no analytics, no
+  telemetry, no advertising, no accounts, and no third-party services. It never
+  sends data to a server operated by us or anyone else, because there is no such
+  server. Everything it handles either stays in your browser's local storage or
+  is passed to the oxdm application running on the same computer.</p>
+</div>
+
+<h2>The only destination data reaches</h2>
+
+<p>When you send a download to oxdm, the extension passes it to the desktop
+application on your own machine, by one of two routes:</p>
+
+<ul>
+  <li>a WebSocket connection to <code>127.0.0.1</code> (loopback: traffic never
+  leaves the computer, and the extension binds to no other address); or</li>
+  <li>native messaging, where your browser launches the local
+  <code>oxdm-native-host</code> program and exchanges messages with it over a
+  pipe.</li>
+</ul>
+
+<p>Both are local. The extension makes no other network requests of any
+kind.</p>
+
+<h2>What is sent to the oxdm application</h2>
+
+<p>Only for a download you are handing over, and only at that moment:</p>
+
+<div class="wrap">
+<table>
+  <tr><th>Item</th><th>Why</th></tr>
+  <tr><td>The download URL</td><td>It is the file to fetch.</td></tr>
+  <tr><td>The page you came from (referrer)</td><td>Many hosts reject a download without it.</td></tr>
+  <tr><td>Cookies for that URL</td><td>So downloads behind a login work. Only cookies matching that one URL are read; your cookie jar is never enumerated or copied elsewhere.</td></tr>
+  <tr><td>Your browser's User-Agent</td><td>So the server sees the same client that loaded the page.</td></tr>
+  <tr><td>Suggested filename, file size, MIME type</td><td>Details the browser already reported about the download.</td></tr>
+</table>
+</div>
+
+<p>oxdm's own handling of this data is governed by
+<a href="https://github.com/jd1378/oxdm">oxdm</a>, not by this extension.</p>
+
+<h2>What is stored on your device</h2>
+
+<p>Three items, all in the browser's local extension storage, none synced to any
+account:</p>
+
+<ul>
+  <li><strong>Your settings</strong>: the pairing code (which contains the local
+  port number and the access token for your own oxdm installation), transport
+  choice, the auto-capture and Add-dialog toggles, and your chosen queue.</li>
+  <li><strong>Capture rules cached from oxdm</strong>: the file types, size
+  threshold and skip lists you configured in oxdm, so the extension keeps working
+  while oxdm is closed.</li>
+  <li><strong>A diagnostic log</strong>: the most recent 100 entries shown in
+  Options &rarr; Logs, recording connection failures and downloads oxdm refused.
+  <strong>These entries can include the URL of a download that was rejected.</strong>
+  They are only ever written to local storage and displayed back to you. Clear
+  them at any time with the Clear button on that page.</li>
+</ul>
+
+<h2>What the extension can see but does not collect</h2>
+
+<p>To place its download button and to offer "Download with oxdm" on right-click,
+the extension runs a content script on pages you visit. That script inspects link
+addresses in the page and any text you select, looking for downloadable URLs. This
+happens entirely inside your browser. Page content, browsing history, form input
+and selected text are never stored and never transmitted. A URL leaves the browser
+only when you act on it, or when auto-capture intercepts a download you
+started.</p>
+
+<h2>Permissions</h2>
+
+<div class="wrap">
+<table>
+  <tr><th>Permission</th><th>What it is for</th></tr>
+  <tr><td><code>downloads</code></td><td>Notice a download starting, and cancel it so oxdm can take over.</td></tr>
+  <tr><td><code>cookies</code></td><td>Read the cookies for the file being downloaded, so authenticated downloads succeed.</td></tr>
+  <tr><td><code>nativeMessaging</code></td><td>Talk to the local oxdm host program.</td></tr>
+  <tr><td><code>storage</code></td><td>Keep your settings and the diagnostic log.</td></tr>
+  <tr><td><code>tabs</code></td><td>Identify the page a download came from, for the referrer.</td></tr>
+  <tr><td><code>contextMenus</code></td><td>Provide the right-click entry.</td></tr>
+  <tr><td><code>notifications</code></td><td>Tell you when oxdm refuses a download.</td></tr>
+  <tr><td>Access to all sites</td><td>Downloads can start on any site, so the extension cannot know in advance which ones to watch. This access is used only to detect download links and read cookies for a file you are downloading.</td></tr>
+</table>
+</div>
+
+<h2>Children</h2>
+
+<p>The extension is a utility with no accounts and no data collection, and is not
+directed at children.</p>
+
+<h2>Removing your data</h2>
+
+<p>Uninstalling the extension deletes everything it stored, since all of it lives
+in browser extension storage. The log can be cleared separately from Options
+&rarr; Logs, and clearing the pairing code from Options removes the stored
+token.</p>
+
+<h2>Changes</h2>
+
+<p>If this policy changes, the revised version is published on this page with a
+new date, and the change is visible in the project's public commit history.</p>
+
+<h2>Contact</h2>
+
+<p>Questions or concerns:
+<a href="https://github.com/jd1378/oxdm_extensions/issues">open an issue</a> on
+the project's GitHub repository.</p>
+
+<footer>
+  oxdm browser extension &middot; Copyright &copy; 2026 jd1378 &middot;
+  Licensed under AGPL-3.0-only &middot;
+  <a href="https://github.com/jd1378/oxdm_extensions">Source code</a>
+</footer>
+
+</main>
+</body>
+</html>
