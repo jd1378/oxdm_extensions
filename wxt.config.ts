@@ -10,7 +10,9 @@ export default defineConfig({
     name: 'oxdm Download Manager Integration',
     description:
       'Sends browser downloads to the oxdm download manager running on your computer. Requires the oxdm desktop app.',
-    version: '0.1.0',
+    // No `version` here on purpose. WXT takes it from package.json, and
+    // setting it here silently overrides that, so a bumped package.json
+    // would still ship a stale manifest and stale zip filenames.
     permissions: [
       'downloads',
       'storage',

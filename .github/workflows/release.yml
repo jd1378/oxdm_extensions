@@ -58,6 +58,31 @@ jobs:
           pnpm zip:firefox
           pnpm zip:safari
 
+      # The check above trusts package.json to reach the manifest, which
+      # is exactly what broke once: a hardcoded `version` in
+      # wxt.config.ts silently overrode it, so a bumped package.json
+      # still shipped 0.1.0 artifacts. Assert against what was actually
+      # built, for every target.
+      - name: Check built manifests match the tag
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          want="${TAG#v}"
+          status=0
+          for dir in .output/*/; do
+            manifest="$dir/manifest.json"
+            [ -f "$manifest" ] || continue
+            got=$(node -p "require('./$manifest').version")
+            if [ "$got" != "$want" ]; then
+              echo "::error::$manifest has version '$got', expected '$want'"
+              status=1
+            else
+              echo "$manifest: $got"
+            fi
+          done
+          exit $status
+
       - name: Generate checksums
         working-directory: .output
         run: |

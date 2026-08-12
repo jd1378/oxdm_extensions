@@ -8,8 +8,14 @@ Add-ons (AMO) and Safari.
 Tagging does not build anything. The flow is deliberately manual at both
 ends so nothing reaches a store without being looked at:
 
-1. Bump `version` in `package.json`. The workflow refuses to run if the
-   tag and this value disagree.
+1. Bump `version` in `package.json`. That is the only place a version
+   is written: WXT copies it into every manifest, and the zip filenames
+   follow it. Do not add a `version` to `wxt.config.ts` - it silently
+   overrides package.json and ships stale artifacts.
+
+   The workflow refuses to run if the tag disagrees with package.json,
+   and again after building if any built manifest disagrees with the
+   tag.
 2. Commit, then tag: `git tag v0.1.1 && git push origin v0.1.1`.
 3. On GitHub, draft a release for that tag, tick **Set as a pre-release**,
    and publish it.
