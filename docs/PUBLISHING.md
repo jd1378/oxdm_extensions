@@ -125,12 +125,82 @@ dev ID breaks local testing.
 > Hands downloads from the browser to the oxdm download manager running
 > on the same computer.
 
-### Listing note
+### Category
 
-The extension does nothing on its own. Say so at the top of the
-description: it requires the oxdm desktop application to be installed
-and running, and link to <https://github.com/jd1378/oxdm>. Both stores
-treat "installs, appears broken" as a user-experience defect.
+| Store | Choose | Why |
+| --- | --- | --- |
+| AMO | **Download Management** | An exact category match. AMO allows two; there is no second one that genuinely applies, and padding it with *Other* helps nobody. |
+| Chrome | **Tools** | Chrome has no download category. *Tools* is the closest fit for a utility that does one mechanical job. *Workflow & Planning* is the defensible alternative, but it skews toward task and project managers. |
+
+Chrome's categories changed in mid-2023; the pre-2023 *Productivity*
+that download managers used to sit in no longer exists.
+
+### Name
+
+Chrome allows 45 characters. `oxdm` alone is accurate but invisible in
+search, so prefer:
+
+> oxdm Download Manager Integration
+
+On AMO the add-on name can stay `oxdm`, since the Download Management
+category already supplies the context.
+
+### Short description
+
+Chrome's summary field allows 132 characters:
+
+> Sends browser downloads to the oxdm download manager running on your
+> computer. Requires the oxdm desktop app.
+
+AMO's summary allows 250:
+
+> Hands your browser's downloads to oxdm, a download manager that runs
+> on your own computer, together with the cookies and referrer needed
+> for files behind a login. Requires the oxdm desktop application; this
+> extension does nothing on its own.
+
+### Full description
+
+Works for both stores. AMO renders limited HTML, Chrome plain text, so
+this is kept to plain paragraphs and bullets.
+
+```text
+oxdm Integration hands downloads from your browser to oxdm, a download
+manager that runs on your own computer.
+
+Requires the oxdm desktop application. Install it first from
+https://github.com/jd1378/oxdm - this extension does nothing on its own.
+
+What it does
+
+- Intercepts downloads as they start and passes them to oxdm instead of
+  the browser's downloader, along with the cookies, referrer and
+  User-Agent a server needs for files behind a login.
+- Adds "Download with oxdm" to the right-click menu, for a link, for
+  text you have selected, or for every download link on the page.
+- Shows a small button next to download links as you hover them.
+- Select several links and send them at once. oxdm opens its own triage
+  window so you can see what was found and choose what to keep.
+- Choose whether oxdm asks first through its Add Download dialog, or
+  queues the download immediately and starts it.
+- Which downloads are captured - size threshold, file types, MIME types,
+  skipped domains - is configured in oxdm itself, so there is one set of
+  rules to maintain rather than two.
+
+Privacy
+
+No analytics, no telemetry, no accounts, no third-party services. The
+extension talks only to oxdm at 127.0.0.1 on your own machine, and
+nothing is sent anywhere else. Full policy:
+https://jd1378.github.io/oxdm_extensions/
+
+Open source, licensed AGPL-3.0:
+https://github.com/jd1378/oxdm_extensions
+```
+
+Say up front that the desktop application is required. Both stores treat
+"installs, appears broken" as a user-experience defect, and it is the
+first thing a reviewer will hit.
 
 ### Permission justifications
 
