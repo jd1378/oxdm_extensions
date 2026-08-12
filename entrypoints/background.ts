@@ -32,11 +32,13 @@ async function init() {
   onSettingsChange((s) => {
     settings = s;
     applyAction();
-    applyClientConfig(s);
-    // Always kick the client: configure() may have torn down a live
-    // session, and a fresh token should retry an existing
-    // token-rejected / wsTokenBlocked latch.
-    client.ensureOpen();
+    // Only re-open when the connection inputs actually moved.
+    // `configure()` may have torn down a live session, and a fresh
+    // token has to retry a token-rejected / wsTokenBlocked latch —
+    // but toggling auto-capture or the pin has nothing to do with the
+    // transport, and kicking the client there would jump the reconnect
+    // backoff and log a fresh failure on every flip.
+    if (applyClientConfig(s)) client.ensureOpen();
   });
 
   let lastSyncedState = '';
@@ -144,7 +146,14 @@ async function init() {
 }
 
 let lastConfiguredToken: string | null = null;
-function applyClientConfig(s: Settings) {
+let lastConnKey: string | null = null;
+
+/**
+ * Push the transport settings into the client. Returns whether any of
+ * them changed, i.e. whether the caller should re-open the connection.
+ * The rest of the settings object is none of the client's business.
+ */
+function applyClientConfig(s: Settings): boolean {
   if (lastConfiguredToken !== null && lastConfiguredToken !== s.token) {
     void pushLog(
       'info',
@@ -155,11 +164,15 @@ function applyClientConfig(s: Settings) {
     );
   }
   lastConfiguredToken = s.token;
+  const key = `${s.transport}|${s.port}|${s.token}`;
+  const changed = lastConnKey !== null && key !== lastConnKey;
+  lastConnKey = key;
   client.configure({
     port: s.port,
     token: s.token,
     transport: s.transport,
   });
+  return changed;
 }
 
 let warnedAboutRulesMiss = false;
