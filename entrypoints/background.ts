@@ -15,19 +15,41 @@ import type { CaptureRequest, RuntimeMsg } from '@/src/shared/messages';
 let settings: Settings;
 let rules: CaptureRules;
 
+/**
+ * The toolbar-button API is `action` on MV3 (Chromium, and Firefox MV3)
+ * but `browserAction` on MV2, which is what the Firefox build ships.
+ * Reaching for `browser.action` there yields undefined, and the first
+ * call on it threw straight out of `init()`, taking the connection and
+ * every listener registered after it down with it.
+ */
+const action: typeof browser.action =
+  browser.action ?? (browser as unknown as { browserAction: typeof browser.action }).browserAction;
+
 export default defineBackground(() => {
-  init();
+  // A throw anywhere in init() used to abort the rest of it silently:
+  // no connection, no context menu, no download interception, and
+  // nothing in the log to say why. Record it instead.
+  void init().catch((e) => {
+    void pushLog(
+      'error',
+      'init',
+      `background init failed: ${(e as Error)?.message ?? String(e)}`,
+    );
+  });
 });
 
 async function init() {
   settings = await getSettings();
   rules = await getCachedRules();
-  applyAction();
+  // Connect before decorating the UI. Talking to oxdm is the whole
+  // point of the extension, so it must not sit behind a badge call
+  // that might not exist on this browser.
   applyClientConfig(settings);
   // The connection is unconditional. It carries the context menu, the
   // in-page pin and the capture-rules sync, none of which depend on
   // auto-capture being on.
   client.ensureOpen();
+  applyAction();
 
   onSettingsChange((s) => {
     settings = s;
@@ -90,7 +112,7 @@ async function init() {
       reachedConnected = false;
     }
     lastSyncedState = cs;
-    browser.action.setTitle({
+    action.setTitle({
       title: `oxdm: ${cs}${settings.autoCapture ? '' : ', auto-capture off'}`,
     });
     // Tell every content script whether the host is reachable so they
@@ -108,7 +130,7 @@ async function init() {
       .catch(() => {});
   });
 
-  browser.action.onClicked.addListener(async () => {
+  action.onClicked.addListener(async () => {
     await setSettings({ autoCapture: !settings.autoCapture });
   });
 
@@ -210,11 +232,19 @@ function applyAction() {
   // Single unified icon; auto-capture state shows as a badge over it
   // so we don't need a second artwork variant for the off case. The
   // badge says nothing about the connection — the popup does that.
-  if (settings.autoCapture) {
-    browser.action.setBadgeText({ text: '' });
-  } else {
-    browser.action.setBadgeText({ text: 'off' });
-    browser.action.setBadgeBackgroundColor?.({ color: '#6b7280' });
+  //
+  // Guarded because this is cosmetic: badge support varies across
+  // browsers (Firefox for Android has no toolbar button at all), and a
+  // missing badge must never cost the user their download capture.
+  try {
+    if (settings.autoCapture) {
+      action.setBadgeText({ text: '' });
+    } else {
+      action.setBadgeText({ text: 'off' });
+      action.setBadgeBackgroundColor?.({ color: '#6b7280' });
+    }
+  } catch (e) {
+    void pushLog('warn', 'ui', `badge update failed: ${(e as Error)?.message}`);
   }
 }
 
