@@ -329,14 +329,20 @@ export class OxdmClient {
       this.handleMessage(ev.data);
     });
     ws.addEventListener('close', (ev) => {
-      // If close fires while we're still waiting for the first
-      // server-originated reply, attribute it to auth rejection.
-      // Otherwise surface the close code verbatim.
-      const tokenRejected = awaitingAuth;
+      // oxdm states the cause in the close frame ("auth rejected",
+      // "auth frame timed out"). Prefer it: closing while we still
+      // await the first reply only *implies* a bad token, and that
+      // guess called a timeout a rejected pairing code. Older oxdm
+      // builds send no reason, so the guess remains the fallback.
+      const stated = ev.reason?.trim() ?? '';
+      const tokenRejected = stated
+        ? /auth rejected/i.test(stated)
+        : awaitingAuth;
       const reason = tokenRejected
         ? 'token rejected by oxdm; paste a fresh pairing code from oxdm Settings'
-        : ev.reason ||
-          `socket closed (code ${ev.code}${ev.wasClean ? '' : ', abnormal'})`;
+        : stated
+          ? `oxdm closed the connection: ${stated}`
+          : `socket closed (code ${ev.code}${ev.wasClean ? '' : ', abnormal'})`;
       this.impl = null;
       this.emitError(reason);
       this.activeTransport = null;
@@ -542,7 +548,11 @@ function buildNativeErrorReason(
       head,
       '',
       ...phaseLines,
-      'The oxdm-native-host binary launched but exited before staying connected. Common causes:',
+      'The oxdm-native-host binary launched but exited before staying connected.',
+      '',
+      'Fastest answer: the shim names the cause on its own stderr before exiting (e.g. "oxdm closed the connection: auth rejected"). The browser does not pass that to the extension, so read it by starting the browser from a terminal. On a Flatpak browser: flatpak run org.mozilla.firefox',
+      '',
+      'Common causes:',
       '  1. The oxdm desktop app is not running. The shim exits with code 1 when it cannot reach the WebSocket bridge.',
       '     Fix: start oxdm. The shim will be respawned on the next request.',
       '  2. oxdm.db is missing or unreadable for the user that owns the browser process.',
@@ -552,9 +562,9 @@ function buildNativeErrorReason(
       '  3. oxdm has never been launched on this machine, so oxdm.db / its settings table does not exist yet.',
       '     The token is auto-generated on first launch; just start the oxdm app once and retry.',
       '  4. The installed oxdm-native-host binary is older than this oxdm app and uses an incompatible wire shape.',
-      '     Fix: rebuild + reinstall the host: cargo build --release --bin oxdm-native-host && oxdm/tools/install-native-host.sh ...',
-      '  5. On Flatpak/Snap browsers, the shim may run under a sandbox that cannot see oxdm.db on the host.',
-      '     Fix: grant read access to the oxdm data dir, or pass --db-path to the binary in the host. Browser stderr typically holds the exact cause but is not exposed to the extension.',
+      '     Fix: rebuild oxdm, then re-run its native-host install so the manifests are rewritten.',
+      '  5. On Flatpak/Snap browsers, the shim runs inside the sandbox and may not reach oxdm.db on the host.',
+      '     The sandbox wrapper oxdm writes passes --db-path explicitly; check that it names the database oxdm actually opens, and that the sandbox has a read grant for that directory (the -wal and -shm sidecars beside it are read too).',
     ].join('\n');
   }
   if (!looksLikeNotFound) {
