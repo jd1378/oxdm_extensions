@@ -18,7 +18,10 @@ export default defineConfig({
     permissions: [
       'downloads',
       'storage',
-      'tabs',
+      // No `tabs`: `tabs.query` and `tabs.sendMessage` never required
+      // it, and the only tab field read is `tab.url` for the referrer,
+      // which `<all_urls>` below already exposes. Chrome Web Store
+      // review rejects the redundant request.
       'contextMenus',
       'cookies',
       // No `activeTab`: `<all_urls>` below already grants everything it

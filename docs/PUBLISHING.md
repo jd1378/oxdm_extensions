@@ -247,10 +247,14 @@ the AMO notes-for-reviewer field.
 | `cookies` | Reads the cookies for the specific URL being downloaded and passes them to oxdm, so files behind a login are downloaded as the logged-in user rather than failing. Only cookies matching that one URL are read. |
 | `nativeMessaging` | Sends the download to the local `oxdm-native-host` program, one of the two supported ways to reach the desktop application. |
 | `storage` | Stores the user's own settings (pairing code, transport, toggles, chosen queue), rules cached from oxdm, and a local 100-entry diagnostic log shown on the Options page. |
-| `tabs` | Reads the URL of the tab a download came from, to send as the referrer. Many hosts reject a download without a correct referrer. Also used to tell content scripts whether oxdm is currently reachable. |
 | `contextMenus` | Adds the "Download with oxdm" right-click entry for links, selections and pages. |
 | `notifications` | Shows a notification when oxdm refuses a download, so a rejected download is not silently lost. |
-| Host permission `<all_urls>` | A download can begin on any site, so the extension cannot know in advance which sites to watch. Access is used only to detect download links on the page and to read cookies for a file the user is downloading. No page content is collected or transmitted. |
+| Host permission `<all_urls>` | A download can begin on any site, so the extension cannot know in advance which sites to watch. Access is used only to detect download links on the page, read cookies for a file the user is downloading, and read the URL of the tab a download came from to send as the referrer, which many hosts require. No page content is collected or transmitted. |
+
+Do **not** add `tabs`. Chrome rejected an earlier submission for it
+(*"The following permission(s) need not be requested"*): `tabs.query`
+and `tabs.sendMessage` never needed it, and `tab.url` is already
+exposed by the host permission. The same goes for `activeTab`.
 
 ### Remote code
 
