@@ -25,11 +25,47 @@ let rules: CaptureRules;
 const action: typeof browser.action =
   browser.action ?? (browser as unknown as { browserAction: typeof browser.action }).browserAction;
 
+/**
+ * Resolves once `settings` and `rules` hold real values.
+ *
+ * MV3 terminates this worker when idle and restarts it *to deliver an
+ * event*, so a handler can start running before the storage reads in
+ * `init()` have finished. Every handler waits on this before reading
+ * either, rather than tripping over an undefined `settings`.
+ */
+let ready: Promise<void>;
+
 export default defineBackground(() => {
+  // Registration happens here, synchronously, before anything is
+  // awaited. A listener added later — as these were, at the end of an
+  // async init() — can miss the very event that woke the worker: the
+  // browser has already dispatched it by the time `addListener` runs,
+  // and the download slips through to the browser's own downloader.
+  // That is the intermittent "capture sometimes does not work" users
+  // hit after the extension has been idle for a while.
+  browser.downloads.onCreated.addListener((item: any) => {
+    void onDownloadCreated(item);
+  });
+  browser.contextMenus.onClicked.addListener((info: any, tab?: any) => {
+    void onContextMenu(info, tab);
+  });
+  action.onClicked.addListener(() => {
+    void onActionClicked();
+  });
+  browser.runtime.onMessage.addListener(
+    (msg: RuntimeMsg, _sender, sendResponse) => {
+      handleRuntimeMsg(msg).then(sendResponse);
+      return true;
+    },
+  );
+  onSettingsChange((s) => {
+    void onSettingsUpdated(s);
+  });
+
   // A throw anywhere in init() used to abort the rest of it silently:
   // no connection, no context menu, no download interception, and
   // nothing in the log to say why. Record it instead.
-  void init().catch((e) => {
+  ready = init().catch((e) => {
     void pushLog(
       'error',
       'init',
@@ -37,6 +73,24 @@ export default defineBackground(() => {
     );
   });
 });
+
+async function onActionClicked() {
+  await ready;
+  await setSettings({ autoCapture: !settings.autoCapture });
+}
+
+async function onSettingsUpdated(s: Settings) {
+  await ready;
+  settings = s;
+  applyAction();
+  // Only re-open when the connection inputs actually moved.
+  // `configure()` may have torn down a live session, and a fresh
+  // token has to retry a token-rejected / wsTokenBlocked latch —
+  // but toggling auto-capture or the pin has nothing to do with the
+  // transport, and kicking the client there would jump the reconnect
+  // backoff and log a fresh failure on every flip.
+  if (applyClientConfig(s)) client.ensureOpen();
+}
 
 async function init() {
   settings = await getSettings();
@@ -50,18 +104,6 @@ async function init() {
   // auto-capture being on.
   client.ensureOpen();
   applyAction();
-
-  onSettingsChange((s) => {
-    settings = s;
-    applyAction();
-    // Only re-open when the connection inputs actually moved.
-    // `configure()` may have torn down a live session, and a fresh
-    // token has to retry a token-rejected / wsTokenBlocked latch —
-    // but toggling auto-capture or the pin has nothing to do with the
-    // transport, and kicking the client there would jump the reconnect
-    // backoff and log a fresh failure on every flip.
-    if (applyClientConfig(s)) client.ensureOpen();
-  });
 
   let lastSyncedState = '';
   // Whether the current session ever reached 'connected' — i.e. auth
@@ -130,10 +172,6 @@ async function init() {
       .catch(() => {});
   });
 
-  action.onClicked.addListener(async () => {
-    await setSettings({ autoCapture: !settings.autoCapture });
-  });
-
   // `icons` on context menu items is Firefox-only. Chromium throws
   // "Unexpected property: 'icons'" when we include it, so we attach
   // the field only on the Firefox build.
@@ -150,21 +188,17 @@ async function init() {
   // 'oxdm' parent the moment we register more than one. Stick to a
   // single item across link / selection / page contexts; retitle
   // dynamically when the content script signals what we're over.
+  // `removeAll` first because MV3 restarts this worker constantly and
+  // creating a menu whose id already exists fails every time after the
+  // first, leaving an unchecked lastError on each wake.
+  try {
+    await browser.contextMenus.removeAll();
+  } catch {}
   browser.contextMenus.create(withIcon({
     id: 'oxdm-send',
     title: 'Download with oxdm',
     contexts: ['link', 'selection', 'page'],
   }) as any);
-  browser.contextMenus.onClicked.addListener(onContextMenu);
-
-  browser.downloads.onCreated.addListener(onDownloadCreated);
-
-  browser.runtime.onMessage.addListener(
-    (msg: RuntimeMsg, _sender, sendResponse) => {
-      handleRuntimeMsg(msg).then(sendResponse);
-      return true;
-    },
-  );
 }
 
 let lastConfiguredToken: string | null = null;
@@ -249,6 +283,7 @@ function applyAction() {
 }
 
 async function handleRuntimeMsg(msg: RuntimeMsg): Promise<unknown> {
+  await ready;
   switch (msg.kind) {
     case 'capture': {
       // Content scripts can read neither the cookie jar nor settings
@@ -310,6 +345,7 @@ async function applyMenuState(selection: number, page: number) {
 }
 
 async function onContextMenu(info: any, tab?: any) {
+  await ready;
   // Not gated on auto-capture: an explicit right-click is the user
   // asking for this one download, which is exactly what someone who
   // turned interception off still wants.
@@ -411,6 +447,9 @@ async function readCookieHeader(
 }
 
 async function onDownloadCreated(item: any) {
+  // This event is often what woke the worker, so storage may still be
+  // in flight. Reading `settings` first would throw on undefined.
+  await ready;
   if (!settings.autoCapture) return;
   if (!item.url || !isPublicHttpUrl(item.url)) return;
   if (rules.minSize > 0 && item.fileSize > 0 && item.fileSize < rules.minSize) return;
@@ -432,11 +471,6 @@ async function onDownloadCreated(item: any) {
     if (rules.skipDomains.some((d) => host === d || host.endsWith('.' + d))) return;
   } catch {}
 
-  try {
-    await browser.downloads.cancel(item.id);
-    await browser.downloads.erase({ id: item.id });
-  } catch {}
-
   const req = await enrich({
     url: item.url,
     filename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined,
@@ -444,10 +478,24 @@ async function onDownloadCreated(item: any) {
     mime_type: item.mime || undefined,
     size: item.fileSize > 0 ? item.fileSize : undefined,
   });
+  // Hand over *before* destroying the browser's copy. Cancelling first
+  // meant that if oxdm was unreachable — not running, still starting,
+  // a stale pairing code — the capture timed out with the download
+  // already cancelled and erased, and the file was simply gone. Now a
+  // refusal leaves the browser to finish it.
   const r = await client.capture(req);
   if (r.result === 'rejected') {
     void pushLog('warn', 'capture', `rejected: ${r.reason} (${item.url})`);
-    notify('oxdm rejected download', r.reason);
+    notify('oxdm could not take the download', `${r.reason}. The browser is downloading it instead.`);
+    return;
+  }
+  try {
+    await browser.downloads.cancel(item.id);
+    await browser.downloads.erase({ id: item.id });
+  } catch (e) {
+    // oxdm already owns the job, so the worst case is a duplicate in
+    // the browser's own list rather than a lost download.
+    void pushLog('warn', 'capture', `could not cancel the browser download: ${(e as Error)?.message}`);
   }
 }
 
