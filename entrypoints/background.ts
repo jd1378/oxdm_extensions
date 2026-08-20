@@ -72,6 +72,7 @@ export default defineBackground(() => {
       `background init failed: ${(e as Error)?.message ?? String(e)}`,
     );
   });
+  void ready.then(setupContextMenu).catch(() => {});
 });
 
 async function onActionClicked() {
@@ -172,6 +173,15 @@ async function init() {
       .catch(() => {});
   });
 
+}
+
+/**
+ * Rebuild the context menu. Deliberately *not* part of `ready`: it
+ * costs a round trip, and every captured download waits on `ready`
+ * before it can pause the browser's copy. Nothing about the menu is
+ * needed to hand a download over, so it must not sit in that path.
+ */
+async function setupContextMenu() {
   // `icons` on context menu items is Firefox-only. Chromium throws
   // "Unexpected property: 'icons'" when we include it, so we attach
   // the field only on the Firefox build.
@@ -471,6 +481,25 @@ async function onDownloadCreated(item: any) {
     if (rules.skipDomains.some((d) => host === d || host.endsWith('.' + d))) return;
   } catch {}
 
+  // Stop the bytes now, before the handover. Neither ordering of
+  // cancel-and-hand-over is safe on its own: cancelling first loses
+  // the file whenever oxdm turns out to be unreachable, and cancelling
+  // afterwards lets the browser finish a small file first, which is
+  // the reported "it went to the browser's downloads" from the other
+  // direction. That window is widest on a cold service worker, where
+  // the handover also has to start a transport.
+  //
+  // Pause is the reversible move: it costs nothing if we go on to
+  // cancel, and it is undone by resume if oxdm says no.
+  let paused = false;
+  try {
+    await browser.downloads.pause(item.id);
+    paused = true;
+  } catch {
+    // Too late to pause (already finished) or not pausable. Carry on:
+    // the cancel below still removes it if oxdm takes the job.
+  }
+
   const req = await enrich({
     url: item.url,
     filename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined,
@@ -478,14 +507,16 @@ async function onDownloadCreated(item: any) {
     mime_type: item.mime || undefined,
     size: item.fileSize > 0 ? item.fileSize : undefined,
   });
-  // Hand over *before* destroying the browser's copy. Cancelling first
-  // meant that if oxdm was unreachable — not running, still starting,
-  // a stale pairing code — the capture timed out with the download
-  // already cancelled and erased, and the file was simply gone. Now a
-  // refusal leaves the browser to finish it.
   const r = await client.capture(req);
   if (r.result === 'rejected') {
     void pushLog('warn', 'capture', `rejected: ${r.reason} (${item.url})`);
+    if (paused) {
+      try {
+        await browser.downloads.resume(item.id);
+      } catch (e) {
+        void pushLog('error', 'capture', `left paused, resume failed: ${(e as Error)?.message} (${item.url})`);
+      }
+    }
     notify('oxdm could not take the download', `${r.reason}. The browser is downloading it instead.`);
     return;
   }
