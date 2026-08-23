@@ -9,7 +9,7 @@ import {
   type CaptureRules,
   type Settings,
 } from '@/src/shared/state';
-import { extOf, isPublicHttpUrl } from '@/src/shared/heuristics';
+import { extOf, extractUrls, isPublicHttpUrl } from '@/src/shared/heuristics';
 import type { CaptureRequest, RuntimeMsg } from '@/src/shared/messages';
 
 let settings: Settings;
@@ -61,6 +61,21 @@ export default defineBackground(() => {
   onSettingsChange((s) => {
     void onSettingsUpdated(s);
   });
+  // Menus outlive the worker, so a full rebuild belongs to install and
+  // browser start alone. Doing it on every wake meant `removeAll()`
+  // could land while a right-click menu was being assembled, and the
+  // usual reason this worker wakes is that very right-click.
+  browser.runtime.onInstalled.addListener(() => {
+    void setupContextMenu(true);
+  });
+  browser.runtime.onStartup.addListener(() => {
+    void setupContextMenu(true);
+  });
+  // Cheap re-assert for the cases neither event covers, such as the
+  // extension being disabled and re-enabled. Creating an id that
+  // already exists is an error we swallow, which is the point: it
+  // never blanks a menu someone is opening.
+  void setupContextMenu(false);
 
   // A throw anywhere in init() used to abort the rest of it silently:
   // no connection, no context menu, no download interception, and
@@ -72,7 +87,6 @@ export default defineBackground(() => {
       `background init failed: ${(e as Error)?.message ?? String(e)}`,
     );
   });
-  void ready.then(setupContextMenu).catch(() => {});
 });
 
 async function onActionClicked() {
@@ -175,13 +189,18 @@ async function init() {
 
 }
 
+const MENU_ID = 'oxdm-send';
+
 /**
- * Rebuild the context menu. Deliberately *not* part of `ready`: it
- * costs a round trip, and every captured download waits on `ready`
- * before it can pause the browser's copy. Nothing about the menu is
- * needed to hand a download over, so it must not sit in that path.
+ * Build the context menu. Deliberately *not* part of `ready`: it costs
+ * a round trip, and every captured download waits on `ready` before it
+ * can pause the browser's copy. Nothing about the menu is needed to
+ * hand a download over, so it must not sit in that path.
+ *
+ * `rebuild` clears what is there first, which is also how items
+ * earlier versions registered get retired on update.
  */
-async function setupContextMenu() {
+async function setupContextMenu(rebuild: boolean) {
   // `icons` on context menu items is Firefox-only. Chromium throws
   // "Unexpected property: 'icons'" when we include it, so we attach
   // the field only on the Firefox build.
@@ -194,21 +213,38 @@ async function setupContextMenu() {
     import.meta.env.BROWSER === 'firefox'
       ? { ...props, icons: { '16': iconUrl } }
       : props;
-  // Chromium auto-groups every extension menu item under a single
-  // 'oxdm' parent the moment we register more than one. Stick to a
-  // single item across link / selection / page contexts; retitle
-  // dynamically when the content script signals what we're over.
-  // `removeAll` first because MV3 restarts this worker constantly and
-  // creating a menu whose id already exists fails every time after the
-  // first, leaving an unchecked lastError on each wake.
+  if (rebuild) {
+    try {
+      await browser.contextMenus.removeAll();
+    } catch {}
+  }
+  // A single item, a fixed title, and only the two contexts that name
+  // what to download. Chromium folds an extension's items into an
+  // 'oxdm' submenu as soon as two are visible at once, and a title
+  // that changes per right click cannot be trusted: retitling is an
+  // async round trip that regularly lost the race with the menu
+  // opening, leaving the row promising the previous click's count.
+  // What it sends is decided at click time from `info`, which the
+  // browser fills for the cursor it actually opened under.
+  //
+  // No 'page' context: with nothing under the cursor the row could
+  // only offer every download-ish link on the page, which is not what
+  // a right-click on blank space asks for. Better to not be there.
   try {
-    await browser.contextMenus.removeAll();
+    // The callback consumes the duplicate-id error a non-rebuild pass
+    // expects; without one it surfaces as an unchecked lastError on
+    // every worker wake.
+    (browser.contextMenus.create as any)(
+      withIcon({
+        id: MENU_ID,
+        title: 'Download with oxdm',
+        contexts: ['link', 'selection'],
+      }),
+      () => {
+        void browser.runtime.lastError;
+      },
+    );
   } catch {}
-  browser.contextMenus.create(withIcon({
-    id: 'oxdm-send',
-    title: 'Download with oxdm',
-    contexts: ['link', 'selection', 'page'],
-  }) as any);
 }
 
 let lastConfiguredToken: string | null = null;
@@ -319,21 +355,12 @@ async function handleRuntimeMsg(msg: RuntimeMsg): Promise<unknown> {
       if (!allowed.length) {
         return { result: 'rejected', reason: 'no public URLs in batch' };
       }
-      const cookieCache = new Map<string, string | undefined>();
-      const items = await Promise.all(
-        // No interactive flag and no queue on batches — oxdm's triage
-        // dialog owns both. See `OxdmClient.batch`.
-        allowed.map((i) => enrich(i, { handoff: false, cookieCache })),
-      );
-      return client.batch(items);
+      return batchCapture(allowed);
     }
     case 'connection-status':
       return { state: client.getState() };
     case 'list-queues':
       return { queues: await client.listQueues() };
-    case 'menu-state':
-      await applyMenuState(msg.selection, msg.page);
-      return { ok: true };
     case 'get-logs':
       return { logs: await getLogs() };
     case 'clear-logs':
@@ -342,45 +369,23 @@ async function handleRuntimeMsg(msg: RuntimeMsg): Promise<unknown> {
   }
 }
 
-async function applyMenuState(selection: number, page: number) {
-  // Retitle the single menu item. Selection count wins over page
-  // count when both are present.
-  let title = 'Download with oxdm';
-  if (selection > 1) title = `Download ${selection} selected links with oxdm`;
-  else if (selection === 1) title = 'Download selected link with oxdm';
-  else if (page > 1) title = `Download ${page} detected links with oxdm`;
-  try {
-    browser.contextMenus.update('oxdm-send', { title } as any);
-  } catch {}
-}
-
 async function onContextMenu(info: any, tab?: any) {
   await ready;
   // Not gated on auto-capture: an explicit right-click is the user
   // asking for this one download, which is exactly what someone who
   // turned interception off still wants.
-  if (info.menuItemId !== 'oxdm-send') return;
-  // Single item across all contexts — decide intent from info shape.
+  if (info.menuItemId !== MENU_ID) return;
+  // The browser fills exactly the fields that describe what the menu
+  // opened on, so intent is read from `info` and never from what the
+  // row happened to be titled.
   //
-  // A right-click on a link that sits *inside a selection* carries
-  // both `linkUrl` and `selectionText`. Taking `linkUrl` first threw
-  // the rest of the selection away and sent one link where the user
-  // had marked several. The selection is the wider intent, so the
-  // content script resolves it; `fallbackUrl` covers the cases where
-  // it turns up nothing to batch.
-  if (info.selectionText && tab?.id != null) {
-    try {
-      await browser.tabs.sendMessage(tab.id, {
-        kind: 'oxdm-context-selection',
-        fallbackUrl: info.linkUrl,
-      });
-      return;
-    } catch {
-      // No content script in this tab (restricted page, or one loaded
-      // before the extension). A link under the cursor is still
-      // actionable; a bare text selection is not.
-      if (!info.linkUrl) return;
-    }
+  // A selection means the click landed inside one: right-clicking
+  // outside a selection clears it, and `selectionText` with it. A link
+  // under the cursor at the same time is passed along as a fallback,
+  // for a selection that turns out to hold nothing to batch.
+  if (info.selectionText) {
+    await sendSelection(info, tab);
+    return;
   }
   if (info.linkUrl) {
     if (!isPublicHttpUrl(info.linkUrl)) {
@@ -388,11 +393,80 @@ async function onContextMenu(info: any, tab?: any) {
       return;
     }
     await client.capture(await buildCapture(info.linkUrl, tab));
+  }
+}
+
+/**
+ * Resolve a selection through the frame it was made in. Anchor hrefs
+ * live in the DOM and reach neither `selectionText` nor anything else
+ * this worker can see, so the page answers, from the snapshot it took
+ * when the menu was asked for rather than from the live selection,
+ * which the browser has usually collapsed by now.
+ *
+ * Addressed by `frameId` because a tab-wide message reaches every
+ * frame, and each one used to answer with its own links — an ad iframe
+ * volunteering its downloads alongside the page the user right-clicked.
+ */
+async function sendSelection(info: any, tab: any): Promise<void> {
+  if (tab?.id != null) {
+    try {
+      const r = (await browser.tabs.sendMessage(
+        tab.id,
+        { kind: 'oxdm-context-selection' },
+        { frameId: info.frameId ?? 0 } as any,
+      )) as { sent?: number } | undefined;
+      // Silence on an empty result reads as a failed extension. Say so.
+      if (r && !r.sent) notify('oxdm', 'No downloadable links found in the selection.');
+      return;
+    } catch (e) {
+      void pushLog(
+        'warn',
+        'menu',
+        `selection: frame did not answer (${(e as Error)?.message ?? e})`,
+      );
+    }
+  }
+  // Nothing answered, so this frame has no content script: a
+  // restricted page, or — far more often — a tab that was already open
+  // when the extension was installed or updated, which keeps whatever
+  // scripts it loaded with until it is reloaded.
+  //
+  // Anchor hrefs are out of reach here. Literal URLs written out in
+  // the selected text are not, and are worth recovering.
+  const urls = extractUrls(info.selectionText ?? '').filter(isPublicHttpUrl);
+  if (urls.length > 1) {
+    await batchCapture(urls.map((url) => ({ url, referrer: tab?.url })));
     return;
   }
-  if (tab?.id != null) {
-    browser.tabs.sendMessage(tab.id, { kind: 'oxdm-context-page' });
+  if (urls.length === 1) {
+    await client.capture(await buildCapture(urls[0], tab));
+    return;
   }
+  // Sending the one link under the cursor and saying nothing is how
+  // this looked like a broken batch: four links selected, one
+  // downloaded, no explanation.
+  if (info.linkUrl && isPublicHttpUrl(info.linkUrl)) {
+    notify(
+      'oxdm',
+      'Sent only the link under the cursor. Reload the page so oxdm can read the whole selection.',
+    );
+    await client.capture(await buildCapture(info.linkUrl, tab));
+    return;
+  }
+  notify('oxdm', 'oxdm cannot read this page yet. Reload the page and try again.');
+}
+
+/**
+ * No interactive flag and no queue on batches — oxdm's triage dialog
+ * owns both. See `OxdmClient.batch`.
+ */
+async function batchCapture(items: CaptureRequest[]) {
+  const cookieCache = new Map<string, string | undefined>();
+  return client.batch(
+    await Promise.all(
+      items.map((i) => enrich(i, { handoff: false, cookieCache })),
+    ),
+  );
 }
 
 async function buildCapture(

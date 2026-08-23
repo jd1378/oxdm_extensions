@@ -88,6 +88,5 @@ export type RuntimeMsg =
   | { kind: 'batch'; items: CaptureRequest[] }
   | { kind: 'connection-status' }
   | { kind: 'list-queues' }
-  | { kind: 'menu-state'; selection: number; page: number }
   | { kind: 'get-logs' }
   | { kind: 'clear-logs' };

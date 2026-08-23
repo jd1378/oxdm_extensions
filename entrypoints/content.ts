@@ -1,5 +1,5 @@
 import { startScanner, stop } from '@/src/content/scanner';
-import { isDownloadishUrl, urlsFromSelection } from '@/src/shared/heuristics';
+import { urlsFromSelection } from '@/src/shared/heuristics';
 import { getSettings, onSettingsChange, type Settings } from '@/src/shared/state';
 
 export default defineContentScript({
@@ -21,46 +21,33 @@ export default defineContentScript({
       }
     };
 
-    // Report selection / page URL counts to background just before
-    // any context menu opens, so visibility can be set per-tab. We
-    // listen on `contextmenu` rather than polling because the menu
-    // is only assembled at that moment.
-    let lastReport = { selection: -1, page: -1 };
-    const reportCounts = (ev?: MouseEvent) => {
-      const target = ev?.target as Element | null;
-      const linkHref = (target?.closest?.('a[href]') as HTMLAnchorElement | null)
-        ?.href;
-      const selUrls = (() => {
+    // What a menu click should send, decided while the menu is being
+    // asked for. Reading the selection when the click finally arrives
+    // is too late: opening the menu on a link collapses the selection,
+    // so the page would answer with the one link under the cursor and
+    // the rest of the batch would be gone. `contextmenu` fires while
+    // the selection is still intact, the same moment the browser fills
+    // its own `selectionText`.
+    let pending: string[] = [];
+    document.addEventListener(
+      'contextmenu',
+      (ev) => {
+        const target = ev.target as Element | null;
+        const link = target?.closest?.('a[href]') as HTMLAnchorElement | null;
         const sel = window.getSelection();
-        if (!sel || sel.isCollapsed) return 0;
-        const urls = urlsFromSelection(sel);
-        // Mirrors the send path below: a clicked link that isn't part
-        // of the selection means the click landed outside it, so the
-        // link alone is the intent.
-        if (linkHref && !urls.includes(linkHref)) return 0;
-        return urls.length;
-      })();
-      // The page-wide scan is the "nothing specific under the cursor"
-      // fallback. A link there is specific.
-      const pageUrls = linkHref
-        ? 0
-        : (() => {
-            const seen = new Set<string>();
-            for (const a of document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
-              if (isDownloadishUrl(a.href)) seen.add(a.href);
-            }
-            return seen.size;
-          })();
-      if (
-        lastReport.selection === selUrls &&
-        lastReport.page === pageUrls
-      ) return;
-      lastReport = { selection: selUrls, page: pageUrls };
-      browser.runtime
-        .sendMessage({ kind: 'menu-state', selection: selUrls, page: pageUrls })
-        .catch(() => {});
-    };
-    document.addEventListener('contextmenu', reportCounts, true);
+        // Containment, not URL comparison: whether the click landed in
+        // the selection is a DOM question, and matching the browser's
+        // `linkUrl` against an anchor's `href` turns it into a string
+        // one that encoding differences can quietly lose.
+        const inSelection =
+          !!sel && !sel.isCollapsed && !!target && sel.containsNode(target, true);
+        // Inside a selection, the selection is the intent, links and
+        // all. Outside it, only the link under the cursor is.
+        pending = inSelection ? urlsFromSelection(sel!) : [];
+        if (!pending.length && link?.href) pending = [link.href];
+      },
+      true,
+    );
 
     // Ask for the current connection state once on bootstrap.
     browser.runtime
@@ -76,37 +63,27 @@ export default defineContentScript({
       reconcile();
     });
 
-    browser.runtime.onMessage.addListener((msg: any) => {
-      if (msg?.kind === 'oxdm-conn') {
-        connState = msg.state;
-        reconcile();
-        return;
-      }
-      if (msg?.kind === 'oxdm-context-selection') {
-        const sel = window.getSelection();
-        const urls = sel && !sel.isCollapsed ? urlsFromSelection(sel) : [];
-        // `fallbackUrl` is the link the click landed on, if any. It
-        // stands in only when the selection yields nothing, and wins
-        // outright when it isn't part of the selection, which means
-        // the click was outside it.
-        const link: string | undefined = msg.fallbackUrl;
-        if (urls.length && (!link || urls.includes(link))) sendOneOrBatch(urls);
-        else if (link) sendOneOrBatch([link]);
-        return;
-      }
-      if (msg?.kind === 'oxdm-context-page') {
-        const seen = new Set<string>();
-        for (const a of document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
-          if (isDownloadishUrl(a.href)) seen.add(a.href);
+    browser.runtime.onMessage.addListener(
+      (msg: any, _sender: any, sendResponse: (r: unknown) => void) => {
+        if (msg?.kind === 'oxdm-conn') {
+          connState = msg.state;
+          reconcile();
+          return;
         }
-        sendOneOrBatch([...seen]);
-        return;
-      }
-    });
+        // The reply carries how many URLs went out, so the background
+        // can tell the user when a click found nothing rather than
+        // leaving it looking like a broken extension.
+        if (msg?.kind === 'oxdm-context-selection') {
+          sendResponse({ sent: sendOneOrBatch(pending) });
+          return;
+        }
+      },
+    );
   },
 });
 
-function sendOneOrBatch(urls: string[]) {
+/** Returns how many URLs were handed over, for the caller to report. */
+function sendOneOrBatch(urls: string[]): number {
   if (urls.length === 1) {
     // `interactive` is the background's call — it owns the setting.
     browser.runtime.sendMessage({
@@ -121,4 +98,5 @@ function sendOneOrBatch(urls: string[]) {
       items: urls.map((u) => ({ url: u, referrer: location.href })),
     });
   }
+  return urls.length;
 }
