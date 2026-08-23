@@ -315,6 +315,10 @@ function flashSaved() {
   settings = await getSettings();
   syncForm();
   bindOnce();
+  // Straight from the manifest, which WXT fills from package.json, so
+  // the About panel can never drift from what is actually installed.
+  document.getElementById('version')!.textContent =
+    browser.runtime.getManifest().version;
 
   // Deep link straight to a tab, e.g. options.html#logs.
   const fromHash = location.hash.replace('#', '');
