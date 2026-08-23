@@ -361,18 +361,33 @@ async function onContextMenu(info: any, tab?: any) {
   // turned interception off still wants.
   if (info.menuItemId !== 'oxdm-send') return;
   // Single item across all contexts — decide intent from info shape.
+  //
+  // A right-click on a link that sits *inside a selection* carries
+  // both `linkUrl` and `selectionText`. Taking `linkUrl` first threw
+  // the rest of the selection away and sent one link where the user
+  // had marked several. The selection is the wider intent, so the
+  // content script resolves it; `fallbackUrl` covers the cases where
+  // it turns up nothing to batch.
+  if (info.selectionText && tab?.id != null) {
+    try {
+      await browser.tabs.sendMessage(tab.id, {
+        kind: 'oxdm-context-selection',
+        fallbackUrl: info.linkUrl,
+      });
+      return;
+    } catch {
+      // No content script in this tab (restricted page, or one loaded
+      // before the extension). A link under the cursor is still
+      // actionable; a bare text selection is not.
+      if (!info.linkUrl) return;
+    }
+  }
   if (info.linkUrl) {
     if (!isPublicHttpUrl(info.linkUrl)) {
       notify('oxdm', `Refused non-public URL: ${info.linkUrl}`);
       return;
     }
     await client.capture(await buildCapture(info.linkUrl, tab));
-    return;
-  }
-  if (info.selectionText) {
-    if (tab?.id != null) {
-      browser.tabs.sendMessage(tab.id, { kind: 'oxdm-context-selection' });
-    }
     return;
   }
   if (tab?.id != null) {

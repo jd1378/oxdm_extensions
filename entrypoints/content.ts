@@ -27,18 +27,22 @@ export default defineContentScript({
     // is only assembled at that moment.
     let lastReport = { selection: -1, page: -1 };
     const reportCounts = (ev?: MouseEvent) => {
-      // If the right-click target is a link, the browser already
-      // shows our 'oxdm-send-link' entry — suppress the selection
-      // variant so we don't get two 'Download with oxdm' rows.
       const target = ev?.target as Element | null;
-      const onLink = !!target?.closest?.('a[href]');
+      const linkHref = (target?.closest?.('a[href]') as HTMLAnchorElement | null)
+        ?.href;
       const selUrls = (() => {
-        if (onLink) return 0;
         const sel = window.getSelection();
         if (!sel || sel.isCollapsed) return 0;
-        return urlsFromSelection(sel).length;
+        const urls = urlsFromSelection(sel);
+        // Mirrors the send path below: a clicked link that isn't part
+        // of the selection means the click landed outside it, so the
+        // link alone is the intent.
+        if (linkHref && !urls.includes(linkHref)) return 0;
+        return urls.length;
       })();
-      const pageUrls = onLink
+      // The page-wide scan is the "nothing specific under the cursor"
+      // fallback. A link there is specific.
+      const pageUrls = linkHref
         ? 0
         : (() => {
             const seen = new Set<string>();
@@ -80,8 +84,14 @@ export default defineContentScript({
       }
       if (msg?.kind === 'oxdm-context-selection') {
         const sel = window.getSelection();
-        if (!sel) return;
-        sendOneOrBatch(urlsFromSelection(sel));
+        const urls = sel && !sel.isCollapsed ? urlsFromSelection(sel) : [];
+        // `fallbackUrl` is the link the click landed on, if any. It
+        // stands in only when the selection yields nothing, and wins
+        // outright when it isn't part of the selection, which means
+        // the click was outside it.
+        const link: string | undefined = msg.fallbackUrl;
+        if (urls.length && (!link || urls.includes(link))) sendOneOrBatch(urls);
+        else if (link) sendOneOrBatch([link]);
         return;
       }
       if (msg?.kind === 'oxdm-context-page') {
