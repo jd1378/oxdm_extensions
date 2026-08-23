@@ -253,6 +253,7 @@ input[type='password']::placeholder { color: var(--fg-4); }
   border-top: var(--border-width) solid var(--border-subtle);
   margin-top: var(--space-6);
 }
+.footer.hidden { display: none; }
 .saved {
   color: var(--status-success);
   font-weight: 600; font-size: 12px;

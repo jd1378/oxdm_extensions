@@ -16,30 +16,85 @@ const app = document.getElementById('app')!;
 let settings: Settings;
 
 /**
- * Push a settings object into the form controls. The markup is static
- * and lives in index.html, so this only ever sets values.
+ * Which settings each tab owns, and how to move them between storage
+ * and the controls. Save and Reset act on the visible tab alone, so
+ * neither can reach across and rewrite a panel the user isn't looking
+ * at. A tab absent from here has nothing to commit, which is also what
+ * hides the footer on it.
+ */
+const TABS: Record<
+  string,
+  { fill(from: Settings): void; read(): Partial<Settings> }
+> = {
+  connection: {
+    fill(from) {
+      set('transport', from.transport);
+      set('pairingCode', from.pairingCode);
+      syncPairingDisabled();
+    },
+    read() {
+      const transport = get('transport') as Settings['transport'];
+      return {
+        transport: ['auto', 'native', 'ws'].includes(transport)
+          ? transport
+          : 'auto',
+        // Save = user-initiated. Any auto-pin from a previous session
+        // no longer applies; explicit choices are remembered as such.
+        transportPinnedByAuto: false,
+        pairingCode: get('pairingCode').trim(),
+      };
+    },
+  },
+  handoff: {
+    fill(from) {
+      (document.getElementById('interactive') as HTMLInputElement).checked =
+        from.interactive;
+      const sel = document.getElementById('defaultQueue') as HTMLSelectElement;
+      // First paint has no options yet; later calls keep whatever oxdm's
+      // queue list already put there.
+      if (!sel.options.length) renderQueueOptions(null);
+      sel.value = [...sel.options].some((o) => o.value === from.defaultQueue)
+        ? from.defaultQueue
+        : '';
+      syncRoutingVisibility();
+    },
+    read() {
+      const sel = document.getElementById('defaultQueue') as HTMLSelectElement;
+      return {
+        interactive: (document.getElementById('interactive') as HTMLInputElement)
+          .checked,
+        defaultQueue: sel.value,
+        defaultQueueName: sel.value
+          ? (sel.selectedOptions[0]?.textContent ?? '').trim()
+          : '',
+      };
+    },
+  },
+  detection: {
+    fill(from) {
+      (document.getElementById('injectButton') as HTMLInputElement).checked =
+        from.injectButton;
+    },
+    read() {
+      return {
+        injectButton: (document.getElementById('injectButton') as HTMLInputElement)
+          .checked,
+      };
+    },
+  },
+};
+
+/**
+ * Push a settings object into every tab's controls. The markup is
+ * static and lives in index.html, so this only ever sets values.
  *
- * Takes the source explicitly because Reset fills the form from
+ * Takes the source explicitly because Reset fills controls from
  * `DEFAULTS` *without* persisting them: nothing on this page is stored
  * until Save, so a mis-clicked Reset costs nothing and can be undone by
  * reloading.
  */
 function syncForm(from: Settings = settings) {
-  set('transport', from.transport);
-  set('pairingCode', from.pairingCode);
-  (document.getElementById('injectButton') as HTMLInputElement).checked =
-    from.injectButton;
-  (document.getElementById('interactive') as HTMLInputElement).checked =
-    from.interactive;
-  const sel = document.getElementById('defaultQueue') as HTMLSelectElement;
-  // First paint has no options yet; later calls keep whatever oxdm's
-  // queue list already put there.
-  if (!sel.options.length) renderQueueOptions(null);
-  sel.value = [...sel.options].some((o) => o.value === from.defaultQueue)
-    ? from.defaultQueue
-    : '';
-  syncPairingDisabled();
-  syncRoutingVisibility();
+  for (const tab of Object.values(TABS)) tab.fill(from);
 }
 
 /**
@@ -64,9 +119,10 @@ function bindOnce() {
 
   document.getElementById('save')!.addEventListener('click', save);
   document.getElementById('reset')!.addEventListener('click', () => {
-    // Fills the controls only. Storage is untouched until Save, which
-    // keeps Save as the single point where anything is committed.
-    syncForm(DEFAULTS);
+    // Fills the visible tab's controls only. Storage is untouched
+    // until Save, which keeps Save the single point where anything is
+    // committed.
+    TABS[currentTab]?.fill(DEFAULTS);
     flash('Defaults filled in. Choose Save changes to apply them.', {
       ms: 4000,
       info: true,
@@ -79,13 +135,25 @@ function bindOnce() {
   });
 }
 
+/** Matches the panel marked active in index.html. */
+let currentTab = 'connection';
+
 function showTab(tab: string) {
+  // Leaving a tab drops its unsaved edits. Save no longer reaches
+  // across tabs, so a pending change left behind on one could never be
+  // committed from another; keeping it would only be an edit the user
+  // can't see. Coming back always shows what is stored.
+  if (tab !== currentTab) TABS[currentTab]?.fill(settings);
+  currentTab = tab;
   for (const el of app.querySelectorAll<HTMLElement>('.nav a')) {
     el.classList.toggle('active', el.dataset.tab === tab);
   }
   for (const el of app.querySelectorAll<HTMLElement>('.panel')) {
     el.classList.toggle('active', el.dataset.panel === tab);
   }
+  // Logs and About own no settings, so Save / Reset would be inert
+  // controls there.
+  app.querySelector<HTMLElement>('.footer')!.classList.toggle('hidden', !TABS[tab]);
   history.replaceState(null, '', `#${tab}`);
 }
 
@@ -251,26 +319,9 @@ function get(id: string): string {
 }
 
 async function save() {
-  const transport = get('transport') as Settings['transport'];
-  const resolved = ['auto', 'native', 'ws'].includes(transport)
-    ? transport
-    : 'auto';
-  const queueSel = document.getElementById('defaultQueue') as HTMLSelectElement;
-  const patch: Partial<Settings> = {
-    transport: resolved,
-    // Save = user-initiated. Any auto-pin from a previous session
-    // no longer applies; explicit choices are remembered as such.
-    transportPinnedByAuto: false,
-    pairingCode: get('pairingCode').trim(),
-    injectButton: (document.getElementById('injectButton') as HTMLInputElement).checked,
-    interactive: (document.getElementById('interactive') as HTMLInputElement)
-      .checked,
-    defaultQueue: queueSel.value,
-    defaultQueueName: queueSel.value
-      ? (queueSel.selectedOptions[0]?.textContent ?? '').trim()
-      : '',
-  };
-  settings = await setSettings(patch);
+  const tab = TABS[currentTab];
+  if (!tab) return;
+  settings = await setSettings(tab.read());
   flashSaved();
 }
 
