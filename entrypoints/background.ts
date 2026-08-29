@@ -1,6 +1,8 @@
 import { client } from '@/src/shared/ipc';
 import { clearLogs, getLogs, pushLog } from '@/src/shared/log';
 import {
+  claimOfflineNotice,
+  clearOfflineNotice,
   getCachedRules,
   getSettings,
   onSettingsChange,
@@ -164,6 +166,10 @@ async function init() {
         void setSettings({ transport: active, transportPinnedByAuto: true });
       }
       void syncRules();
+      // Re-arm the offline notice: the next stretch of oxdm being
+      // closed is news again.
+      offlineNoticed = false;
+      void clearOfflineNotice();
     }
     if (cs === 'disconnected' || cs === 'error') {
       reachedConnected = false;
@@ -606,7 +612,14 @@ async function onDownloadCreated(item: any) {
         void pushLog('error', 'capture', `left paused, resume failed: ${(e as Error)?.message} (${item.url})`);
       }
     }
-    notify('oxdm could not take the download', `${r.reason}. The browser is downloading it instead.`);
+    if (r.unreachable) {
+      await notifyUnreachableOnce();
+    } else {
+      notify(
+        'oxdm could not take the download',
+        `${r.reason}. The browser is downloading it instead.`,
+      );
+    }
     return;
   }
   try {
@@ -617,6 +630,31 @@ async function onDownloadCreated(item: any) {
     // the browser's own list rather than a lost download.
     void pushLog('warn', 'capture', `could not cancel the browser download: ${(e as Error)?.message}`);
   }
+}
+
+/**
+ * Whether this worker has already dealt with the notice. The storage
+ * latch behind `claimOfflineNotice` covers worker restarts; this
+ * covers downloads that start together, before the first claim has
+ * written anything.
+ */
+let offlineNoticed = false;
+
+/**
+ * Told once per stretch of oxdm being unreachable, not once per file.
+ * A closed oxdm otherwise turns a folder of downloads into a column of
+ * identical notifications, each carrying whatever the transport had to
+ * say for itself — up to the native host's several-paragraph
+ * troubleshooting text. The Options log keeps the detail.
+ */
+async function notifyUnreachableOnce() {
+  if (offlineNoticed) return;
+  offlineNoticed = true;
+  if (!(await claimOfflineNotice())) return;
+  notify(
+    'oxdm could not be reached',
+    'The browser is downloading it instead. See the extension options for details.',
+  );
 }
 
 function notify(title: string, message: string) {

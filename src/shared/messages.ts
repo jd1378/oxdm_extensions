@@ -76,7 +76,17 @@ export type OutboundRequest =
 
 export type Response =
   | { result: 'accepted'; job_id: string; id?: string }
-  | { result: 'rejected'; reason: string; id?: string }
+  | {
+      result: 'rejected';
+      reason: string;
+      id?: string;
+      /**
+       * Set by the client, never by oxdm: the request never reached
+       * oxdm at all. Callers use it to keep a run of failures while
+       * oxdm is closed from turning into one notification per file.
+       */
+      unreachable?: boolean;
+    }
   | { result: 'capture_rules'; id?: string; rules: CaptureRulesWire }
   | { result: 'queues'; id?: string; queues: QueueSummary[] }
   | { result: 'batch_result'; id?: string; accepted: string[]; rejected: string[] };

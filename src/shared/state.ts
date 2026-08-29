@@ -176,3 +176,27 @@ export async function getCachedRules(): Promise<CaptureRules> {
 export async function setCachedRules(r: CaptureRules): Promise<void> {
   await browser.storage.local.set({ [RULES_KEY]: r });
 }
+
+// ── Offline-notice latch ──────────────────────────────────────────────
+// One notification per stretch of oxdm being unreachable, not one per
+// download. Kept in storage rather than in a background variable
+// because MV3 tears the worker down between downloads, which would
+// re-arm an in-memory flag on every file.
+
+const OFFLINE_NOTICE_KEY = 'oxdm:offlineNoticeShown';
+
+/**
+ * True the first time it is called in an offline stretch, false for
+ * every call after that, until `clearOfflineNotice()` runs.
+ */
+export async function claimOfflineNotice(): Promise<boolean> {
+  const got = await browser.storage.local.get(OFFLINE_NOTICE_KEY);
+  if (got[OFFLINE_NOTICE_KEY]) return false;
+  await browser.storage.local.set({ [OFFLINE_NOTICE_KEY]: true });
+  return true;
+}
+
+/** Re-arms the notice. Called when oxdm is reachable again. */
+export async function clearOfflineNotice(): Promise<void> {
+  await browser.storage.local.remove(OFFLINE_NOTICE_KEY);
+}

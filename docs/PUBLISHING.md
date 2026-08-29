@@ -139,10 +139,12 @@ reading it off the dashboard, or by generating a key yourself and adding
 the public half to the manifest as `"key"`, which makes the ID
 deterministic.
 
-Then set it as the default for `oxdm/tools/install-native-host.sh
---chromium-id`. Keep your unpacked development ID in `allowed_origins`
-alongside the published one; the field takes a list, and dropping the
-dev ID breaks local testing.
+Then set it as the default in oxdm's `CHROMIUM_EXTENSION_ID`
+(`src/domain/native_host.rs`), which is what the app writes into every
+manifest it registers on launch. `oxdm --install-native-host
+--chromium-id <id>` overrides it for a one-off. Keep your unpacked
+development ID in `allowed_origins` alongside the published one; the
+field takes a list, and dropping the dev ID breaks local testing.
 
 ## Store copy
 

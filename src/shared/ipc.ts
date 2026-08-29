@@ -394,7 +394,8 @@ export class OxdmClient {
   }
 
   private failAllPending(reason: string) {
-    for (const [, fn] of this.pending) fn({ result: 'rejected', reason });
+    for (const [, fn] of this.pending)
+      fn({ result: 'rejected', reason, unreachable: true });
     this.pending.clear();
   }
 
@@ -426,7 +427,14 @@ export class OxdmClient {
       setTimeout(() => {
         if (this.pending.has(correlationId)) {
           this.pending.delete(correlationId);
-          resolve({ result: 'rejected', reason: 'timeout' });
+          // A timeout while the session is up is oxdm itself being
+          // slow, which is worth telling the user about. One while
+          // it is down is just the request never leaving here.
+          resolve({
+            result: 'rejected',
+            reason: 'timeout',
+            unreachable: this.state !== 'connected',
+          });
         }
       }, 15_000);
     });
@@ -505,7 +513,7 @@ function classifyNativePhase(
       phase: `discovery (${elapsedMs} ms, process never spawned)`,
       narrowed: [
         'The browser could not locate or load the native-messaging manifest. The shim binary was never executed.',
-        'Verify the manifest file exists in this browser\'s NativeMessagingHosts directory and lists this extension in allowed_origins / allowed_extensions.',
+        'Verify oxdm registered a manifest for this browser, and that it lists this extension in allowed_origins / allowed_extensions.',
       ],
     };
   }
@@ -514,7 +522,7 @@ function classifyNativePhase(
       phase: `spawn (${elapsedMs} ms, process exited almost immediately)`,
       narrowed: [
         'The shim binary was launched but exited before it could begin forwarding. Likely cause: the "path" in the manifest points at a missing/non-executable binary, or the binary itself rejected its launch arguments.',
-        'Confirm the path field of the manifest with: cat ~/.config/<browser>/NativeMessagingHosts/io.github.jd1378.oxdm.host.json',
+        manifestHint(),
       ],
     };
   }
@@ -527,7 +535,152 @@ function classifyNativePhase(
   };
 }
 
-function buildNativeErrorReason(
+type HostOs = 'win' | 'mac' | 'linux';
+
+/**
+ * Enough of the platform to name the right paths in an error.
+ *
+ * Read from the user agent rather than `runtime.getPlatformInfo()`
+ * because that one is a promise and these strings are built inside
+ * disconnect handlers with nothing to await on. `null` when the agent
+ * string says nothing useful, and then every platform is listed:
+ * showing all three beats confidently showing the wrong one, which is
+ * what a hardcoded set of Linux paths did.
+ */
+function detectOs(): HostOs | null {
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent;
+  if (/Windows/i.test(ua)) return 'win';
+  if (/Mac OS X|Macintosh/i.test(ua)) return 'mac';
+  if (/Linux|X11|CrOS/i.test(ua)) return 'linux';
+  return null;
+}
+
+const IS_FIREFOX_BUILD = import.meta.env.BROWSER === 'firefox';
+
+const OS_LABEL: Record<HostOs, string> = {
+  win: 'Windows',
+  mac: 'macOS',
+  linux: 'Linux',
+};
+
+/**
+ * Where this browser looks for the manifest, per platform.
+ *
+ * One vendor of the running family is named rather than all of them:
+ * what someone hunting a file that is not there needs is the shape of
+ * the path. Firefox spells the directory differently from Chromium
+ * (`native-messaging-hosts`, not `NativeMessagingHosts`), which is its
+ * own morning lost to looking in the wrong place.
+ */
+function manifestDirs(os: HostOs): string[] {
+  switch (os) {
+    case 'win':
+      // No directory to inspect: a registry value names the manifest.
+      return IS_FIREFOX_BUILD
+        ? [
+            `  HKCU\\Software\\Mozilla\\NativeMessagingHosts\\${NATIVE_HOST_NAME}`,
+            '  (LibreWolf under Software\\LibreWolf). The value is the full path of a',
+            '  manifest oxdm writes under %LOCALAPPDATA%\\oxdm\\.',
+          ]
+        : [
+            `  HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NATIVE_HOST_NAME}`,
+            '  (Chromium, Edge, Brave and Vivaldi each under their own vendor key).',
+            '  The value is the full path of a manifest oxdm writes under',
+            '  %LOCALAPPDATA%\\oxdm\\.',
+          ];
+    case 'mac':
+      return IS_FIREFOX_BUILD
+        ? [
+            '  ~/Library/Application Support/Mozilla/NativeMessagingHosts/',
+            '  (Zen and LibreWolf under their own directory beside it)',
+          ]
+        : [
+            '  ~/Library/Application Support/Google/Chrome/NativeMessagingHosts/',
+            '  (Chromium, Microsoft Edge, BraveSoftware/Brave-Browser, Vivaldi and',
+            '  com.operasoftware.Opera each under their own directory beside it)',
+          ];
+    case 'linux':
+      return IS_FIREFOX_BUILD
+        ? [
+            '  ~/.mozilla/native-messaging-hosts/   (note the spelling: not NativeMessagingHosts)',
+            '  ~/.zen/… and ~/.librewolf/… for those forks',
+            '  Flatpak: ~/.var/app/org.mozilla.firefox/.mozilla/native-messaging-hosts/',
+            '  Snap:    ~/snap/firefox/common/.mozilla/native-messaging-hosts/',
+          ]
+        : [
+            '  ~/.config/google-chrome/NativeMessagingHosts/',
+            '  (chromium, ungoogled-chromium, microsoft-edge, BraveSoftware/Brave-Browser,',
+            '  vivaldi and opera each under their own directory beside it)',
+            '  Flatpak: ~/.var/app/<app-id>/config/<vendor>/NativeMessagingHosts/',
+            '  Snap:    ~/snap/chromium/current/.config/chromium/NativeMessagingHosts/',
+          ];
+  }
+}
+
+/** Where oxdm keeps the database the shim reads port and token from. */
+function dbPaths(os: HostOs): string[] {
+  switch (os) {
+    case 'win':
+      return ['  %APPDATA%\\oxdm\\db\\oxdm.db'];
+    case 'mac':
+      return ['  ~/Library/Application Support/oxdm/db/oxdm.db'];
+    case 'linux':
+      return ['  ~/.local/share/oxdm/db/oxdm.db'];
+  }
+}
+
+/**
+ * Render a per-platform block for the detected OS, or for all three
+ * when the agent string did not say. The heading is dropped in the
+ * single-platform case: naming the OS someone is sitting in front of
+ * is noise.
+ */
+function platformBlock(lines: (os: HostOs) => string[]): string[] {
+  const os = detectOs();
+  if (os) return lines(os);
+  const out: string[] = [];
+  for (const each of ['linux', 'mac', 'win'] as HostOs[]) {
+    out.push(`  ${OS_LABEL[each]}:`);
+    for (const l of lines(each)) out.push(`  ${l}`);
+  }
+  return out;
+}
+
+/**
+ * One line naming how to look at the manifest this browser would have
+ * loaded. Its own helper because the answer on Windows is a registry
+ * query and not a file at all, and because Firefox spells its
+ * directory differently from Chromium on every platform but macOS.
+ */
+function manifestHint(): string {
+  const file = `${NATIVE_HOST_NAME}.json`;
+  switch (detectOs()) {
+    case 'win': {
+      const key = IS_FIREFOX_BUILD
+        ? 'Software\\Mozilla'
+        : 'Software\\Google\\Chrome';
+      return `Read the manifest path out of the registry: reg query "HKCU\\${key}\\NativeMessagingHosts\\${NATIVE_HOST_NAME}"`;
+    }
+    case 'mac': {
+      // `$HOME` rather than `~`: the path has a space in it, so it has
+      // to be quoted, and a quoted tilde is a directory called `~`.
+      const dir = IS_FIREFOX_BUILD
+        ? '$HOME/Library/Application Support/Mozilla/NativeMessagingHosts'
+        : '$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts';
+      return `Confirm the "path" field of the manifest with: cat "${dir}/${file}"`;
+    }
+    case 'linux': {
+      const dir = IS_FIREFOX_BUILD
+        ? '~/.mozilla/native-messaging-hosts'
+        : '~/.config/<browser>/NativeMessagingHosts';
+      return `Confirm the "path" field of the manifest with: cat ${dir}/${file}`;
+    }
+    default:
+      return `Confirm the "path" field of the ${file} oxdm registered for this browser.`;
+  }
+}
+
+export function buildNativeErrorReason(
   raw: string,
   ctx?: NativeErrorContext,
 ): string {
@@ -550,19 +703,25 @@ function buildNativeErrorReason(
       ...phaseLines,
       'The oxdm-native-host binary launched but exited before staying connected.',
       '',
-      'Fastest answer: the shim names the cause on its own stderr before exiting (e.g. "oxdm closed the connection: auth rejected"). The browser does not pass that to the extension, so read it by starting the browser from a terminal. On a Flatpak browser: flatpak run org.mozilla.firefox',
+      'Fastest answer: the shim names the cause on its own stderr before exiting (e.g. "oxdm closed the connection: auth rejected"). The browser does not pass that to the extension, so read it by starting the browser from a terminal.',
+      ...(detectOs() === 'linux'
+        ? ['On a Flatpak browser that means: flatpak run org.mozilla.firefox']
+        : []),
       '',
       'Common causes:',
       '  1. The oxdm desktop app is not running. The shim exits with code 1 when it cannot reach the WebSocket bridge.',
       '     Fix: start oxdm. The shim will be respawned on the next request.',
       '  2. oxdm.db is missing or unreadable for the user that owns the browser process.',
-      '     The shim reads port + token from ~/.local/share/oxdm/oxdm.db (Linux) /',
-      '     ~/Library/Application Support/oxdm/oxdm.db (macOS) / %APPDATA%\\oxdm\\oxdm.db (Windows).',
-      '     If oxdm runs under a different user, point the shim at the real DB via a --db-path wrapper.',
+      '     The shim reads port + token from:',
+      ...platformBlock(dbPaths).map((l) => `   ${l}`),
+      '     Installs made before the database had a directory of its own keep it one',
+      '     level up, beside the other oxdm data. If oxdm runs under a different user,',
+      '     point the shim at the real database via a --db-path wrapper.',
       '  3. oxdm has never been launched on this machine, so oxdm.db / its settings table does not exist yet.',
       '     The token is auto-generated on first launch; just start the oxdm app once and retry.',
       '  4. The installed oxdm-native-host binary is older than this oxdm app and uses an incompatible wire shape.',
-      '     Fix: rebuild oxdm, then re-run its native-host install so the manifests are rewritten.',
+      '     Fix: restart oxdm. It rewrites the manifests on every launch, so a manifest',
+      '     left pointing at an older copy is corrected by starting the current one.',
       '  5. On Flatpak/Snap browsers, the shim runs inside the sandbox and may not reach oxdm.db on the host.',
       '     The sandbox wrapper oxdm writes passes --db-path explicitly; check that it names the database oxdm actually opens, and that the sandbox has a read grant for that directory (the -wal and -shm sidecars beside it are read too).',
     ].join('\n');
@@ -571,22 +730,27 @@ function buildNativeErrorReason(
     if (phaseLines.length === 0) return head;
     return [head, '', ...phaseLines].join('\n');
   }
+  const idFlag = IS_FIREFOX_BUILD ? '--firefox-id' : '--chromium-id';
   return [
     head,
     '',
     ...phaseLines,
-    head,
-    '',
     'The browser could not launch the oxdm native host. Common causes:',
-    `  1. The native-messaging manifest "${NATIVE_HOST_NAME}.json" is missing from this browser's NativeMessagingHosts directory.`,
-    `     Fix: run oxdm/tools/install-native-host.sh --chromium-id ${extId} (or --firefox-id <id> for Firefox builds).`,
-    '  2. The manifest exists but its "allowed_origins" / "allowed_extensions" does not include this extension.',
+    '  1. oxdm has not been started on this machine since it was installed.',
+    '     It registers itself with every browser it finds on each launch, so the',
+    '     usual fix is to start oxdm once and retry. Where it writes:',
+    ...platformBlock(manifestDirs),
+    '  2. The manifest is there but does not name this extension.',
     `     This extension's id: ${extId}`,
-    '     Re-run the installer with the id above.',
+    '     oxdm ships with the published ids already listed, so this is what an',
+    '     unpacked development build sees — its id changes with where it was loaded',
+    '     from. Fix: register that id explicitly, then restart the browser:',
+    `       oxdm --install-native-host ${idFlag} ${extId}`,
+    '     Settings → Browser integration has the same button.',
     '  3. The "path" field in the manifest points at a missing or non-executable file.',
-    '     Confirm oxdm-native-host is on disk where the manifest says, and is chmod +x.',
+    '     Confirm oxdm-native-host is on disk where the manifest says, and is executable.',
     '  4. Manifest file mode does not allow the browser to read it (e.g. dropped into root-owned dir).',
-    '     Per-user dirs (~/.config/<browser>/NativeMessagingHosts) avoid this; install as the same user that runs the browser.',
+    '     Per-user locations avoid this; register as the same user that runs the browser.',
     '  5. On Flatpak/Snap browsers, the sandbox cannot reach the host binary even when the manifest is in place.',
     '     For Flatpak: expose only the host binary, not the full filesystem:',
     '       flatpak override --user --filesystem=/usr/local/bin/oxdm-native-host:ro <flatpak-id>',
