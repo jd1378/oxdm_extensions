@@ -1,11 +1,26 @@
 # oxdm browser extension
 
+[![Get it on the Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Install-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/oxdm-download-manager-bri/bfefefnlghppdcgjjimkllklpifkcokj)
+[![Get it on Firefox Add-ons](https://img.shields.io/badge/Firefox_Add--ons-Install-FF7139?style=for-the-badge&logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/oxdm-download-manager-bridge/)
+
 Cross-browser WebExtension that captures downloads and forwards them to
 the [oxdm](https://github.com/jd1378/oxdm) desktop app over its
 loopback WebSocket bridge.
 
 Built with [WXT](https://wxt.dev): single TypeScript codebase, one
 config, three build targets (Chromium MV3, Firefox MV2, Safari MV2).
+
+## Install
+
+| Browser                                | Store                                                                                                                   |
+|----------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| Chrome, Edge, Brave and other Chromium | [Chrome Web Store](https://chromewebstore.google.com/detail/oxdm-download-manager-bri/bfefefnlghppdcgjjimkllklpifkcokj) |
+| Firefox                                | [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/oxdm-download-manager-bridge/)                         |
+
+The extension is only a bridge: it needs [oxdm](https://github.com/jd1378/oxdm)
+running on the same computer. For the WebSocket transport, copy the
+pairing code from *oxdm → Settings → Browser integration* into the
+extension's Options page.
 
 ## Features
 
