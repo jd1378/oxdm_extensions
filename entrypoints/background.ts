@@ -45,9 +45,22 @@ export default defineBackground(() => {
   // and the download slips through to the browser's own downloader.
   // That is the intermittent "capture sometimes does not work" users
   // hit after the extension has been idle for a while.
-  browser.downloads.onCreated.addListener((item: any) => {
-    void onDownloadCreated(item);
-  });
+  //
+  // Chromium lets a listener hold a download before it has a path:
+  // ahead of the Save As dialog, and before the file can finish into
+  // the downloads folder. `onCreated` only reports a download already
+  // under way, so it is the fallback for Firefox, which has no hold.
+  const determining = browser.downloads.onDeterminingFilename;
+  if (determining) {
+    determining.addListener((item: any, suggest) => {
+      void holdForCapture(item, suggest);
+      return true;
+    });
+  } else {
+    browser.downloads.onCreated.addListener((item: any) => {
+      void captureDownload(item);
+    });
+  }
   browser.contextMenus.onClicked.addListener((info: any, tab?: any) => {
     void onContextMenu(info, tab);
   });
@@ -551,17 +564,36 @@ async function readCookieHeader(
   return header;
 }
 
-async function onDownloadCreated(item: any) {
+/**
+ * Chromium's hold. The download cannot go on, not even to its Save As
+ * dialog, until `suggest` is called, so every path that leaves the
+ * browser to finish it has to call it, a throw included. A cancelled
+ * download takes no suggestion.
+ */
+async function holdForCapture(item: any, suggest: () => void) {
+  let cancelled = false;
+  try {
+    cancelled = await captureDownload(item);
+  } finally {
+    if (!cancelled) suggest();
+  }
+}
+
+/**
+ * Hand a browser download to oxdm. Resolves true once oxdm owns it and
+ * the browser's copy is cancelled; false leaves the browser to finish.
+ */
+async function captureDownload(item: any): Promise<boolean> {
   // This event is often what woke the worker, so storage may still be
   // in flight. Reading `settings` first would throw on undefined.
   await ready;
-  if (!settings.autoCapture) return;
-  if (!item.url || !isPublicHttpUrl(item.url)) return;
-  if (rules.minSize > 0 && item.fileSize > 0 && item.fileSize < rules.minSize) return;
+  if (!settings.autoCapture) return false;
+  if (!item.url || !isPublicHttpUrl(item.url)) return false;
+  if (rules.minSize > 0 && item.fileSize > 0 && item.fileSize < rules.minSize) return false;
   const mime = (item.mime ?? '').toLowerCase();
-  if (rules.skipMimePrefixes.some((p) => mime.startsWith(p))) return;
+  if (rules.skipMimePrefixes.some((p) => mime.startsWith(p))) return false;
   const ext = extOf(item.url) ?? extOf(item.filename ?? '');
-  if (ext && rules.skipExtensions.includes(ext)) return;
+  if (ext && rules.skipExtensions.includes(ext)) return false;
   // Allow lists are subtractive after skips: when non-empty, require a
   // positive match. Either dimension alone is sufficient.
   const hasAllow =
@@ -569,11 +601,11 @@ async function onDownloadCreated(item: any) {
   if (hasAllow) {
     const extOk = !!ext && rules.allowExtensions.includes(ext);
     const mimeOk = !!mime && rules.allowMimePrefixes.some((p) => mime.startsWith(p));
-    if (!extOk && !mimeOk) return;
+    if (!extOk && !mimeOk) return false;
   }
   try {
     const host = new URL(item.url).hostname;
-    if (rules.skipDomains.some((d) => host === d || host.endsWith('.' + d))) return;
+    if (rules.skipDomains.some((d) => host === d || host.endsWith('.' + d))) return false;
   } catch {}
 
   // Stop the bytes now, before the handover. Neither ordering of
@@ -582,7 +614,8 @@ async function onDownloadCreated(item: any) {
   // afterwards lets the browser finish a small file first, which is
   // the reported "it went to the browser's downloads" from the other
   // direction. That window is widest on a cold service worker, where
-  // the handover also has to start a transport.
+  // the handover also has to start a transport. Chromium's hold closes
+  // it, but would still let the browser fetch alongside oxdm.
   //
   // Pause is the reversible move: it costs nothing if we go on to
   // cancel, and it is undone by resume if oxdm says no.
@@ -620,16 +653,19 @@ async function onDownloadCreated(item: any) {
         `${r.reason}. The browser is downloading it instead.`,
       );
     }
-    return;
+    return false;
   }
+  let cancelled = false;
   try {
     await browser.downloads.cancel(item.id);
+    cancelled = true;
     await browser.downloads.erase({ id: item.id });
   } catch (e) {
     // oxdm already owns the job, so the worst case is a duplicate in
     // the browser's own list rather than a lost download.
-    void pushLog('warn', 'capture', `could not cancel the browser download: ${(e as Error)?.message}`);
+    void pushLog('warn', 'capture', `could not ${cancelled ? 'erase' : 'cancel'} the browser download: ${(e as Error)?.message}`);
   }
+  return cancelled;
 }
 
 /**

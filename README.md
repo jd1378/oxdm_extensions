@@ -26,9 +26,9 @@ extension's Options page.
 
 - **Toolbar toggle**: click the action icon to switch auto-capture on
   / off; an `off` badge marks the disabled state.
-- **Download interception**: when auto-capture is on,
-  `chrome.downloads.onCreated` is cancelled + erased, and the URL is
-  forwarded to oxdm with cookies, referrer, UA, and any
+- **Download interception**: when auto-capture is on, a browser
+  download is held, cancelled + erased, and the URL is forwarded to
+  oxdm with cookies, referrer, UA, and any
   `Content-Disposition` filename hint. Switching it off scopes the
   extension to explicit sends only. The connection, context menu and
   in-page pin all keep working, since someone who wants the browser to
@@ -161,7 +161,7 @@ browser and what oxdm cannot see:
 
 | the extension owns                                 | oxdm owns                                              |
 |----------------------------------------------------|--------------------------------------------------------|
-| Intercepting `downloads.onCreated`, cancel + erase  | Everything after `accept_capture`                      |
+| Intercepting browser downloads, cancel + erase      | Everything after `accept_capture`                      |
 | Cookie jar, real User-Agent, page referrer          | Filename resolution + numbering, `Content-Disposition` |
 | In-page detection (pin, selection, context menu)    | Save folder, category classification, segments         |
 | Applying the capture rules oxdm authored            | Authoring those rules (Settings → Browser integration) |

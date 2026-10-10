@@ -11,8 +11,8 @@ export type Transport = 'auto' | 'native' | 'ws';
  */
 export interface Settings {
   /**
-   * Intercept `downloads.onCreated` and hand the URL to oxdm instead
-   * of letting the browser download it.
+   * Intercept browser downloads and hand the URL to oxdm instead of
+   * letting the browser download it.
    *
    * Scoped to that interception alone — it does **not** gate the
    * connection to oxdm, the context menu, or the in-page pin. Turning
